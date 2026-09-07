@@ -290,8 +290,8 @@ export async function expandFacultyAssignmentsToSessions(options: {
               batchName:        batch.name,
               type:             'TUTORIAL',
               duration:         dur,
-              requiredRoomType: a.subject.name.includes('Robotics') ? 'CLASSROOM' : 'ANY',
-              allowedRoomIds:   a.subject.name.includes('Robotics') ? allowedClassrooms : allowedAny,
+              requiredRoomType: 'ANY',
+              allowedRoomIds:   allowedAny,
             });
           }
         } else {
@@ -303,8 +303,8 @@ export async function expandFacultyAssignmentsToSessions(options: {
               batchName:        null,
               type:             'TUTORIAL',
               duration:         dur,
-              requiredRoomType: a.subject.name.includes('Robotics') ? 'CLASSROOM' : 'ANY',
-              allowedRoomIds:   a.subject.name.includes('Robotics') ? allowedClassrooms : allowedAny,
+              requiredRoomType: 'ANY',
+              allowedRoomIds:   allowedAny,
             });
           }
         }
@@ -317,8 +317,8 @@ export async function expandFacultyAssignmentsToSessions(options: {
             batchName:        null,
             type:             'TUTORIAL',
             duration:         dur,
-            requiredRoomType: a.subject.name.includes('Robotics') ? 'CLASSROOM' : 'ANY',
-            allowedRoomIds:   a.subject.name.includes('Robotics') ? allowedClassrooms : allowedAny,
+            requiredRoomType: 'ANY',
+            allowedRoomIds:   allowedAny,
           });
         }
       }

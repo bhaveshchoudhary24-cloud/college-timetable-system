@@ -1246,10 +1246,12 @@ export async function seedFacultyWorkload() {
         capacity: r.isLab ? 30 : 70,
         departmentId: compDept.id,
         isLab: r.isLab,
+        isActive: true,
         building: 'Main Building'
       },
       update: {
-        isLab: r.isLab
+        isLab: r.isLab,
+        isActive: true,
       }
     });
   }

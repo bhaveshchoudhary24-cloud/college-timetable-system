@@ -95,10 +95,10 @@ const practicalMapping = [
   { subject: 'Elective-I Lab', batch: 'B3', rooms: ['C106'] },
   { subject: 'Elective-I Lab', batch: 'B4', rooms: ['C106'] },
 
-  { subject: 'Robotics and Automation', batch: 'B1', rooms: ['E102', 'C103'] },
-  { subject: 'Robotics and Automation', batch: 'B2', rooms: ['C103', 'E102'] },
-  { subject: 'Robotics and Automation', batch: 'B3', rooms: ['E102', 'C104'] },
-  { subject: 'Robotics and Automation', batch: 'B4', rooms: ['C106', 'E102'] },
+  { subject: 'Robotics and Automation', batch: 'B1', rooms: ['E103', 'C103'] },
+  { subject: 'Robotics and Automation', batch: 'B2', rooms: ['C103', 'E103'] },
+  { subject: 'Robotics and Automation', batch: 'B3', rooms: ['E103', 'C104'] },
+  { subject: 'Robotics and Automation', batch: 'B4', rooms: ['C106', 'E103'] },
 
   { subject: 'Technical Seminar', batch: 'B1', rooms: ['C103'] },
   { subject: 'Technical Seminar', batch: 'B2', rooms: ['E105'] },
