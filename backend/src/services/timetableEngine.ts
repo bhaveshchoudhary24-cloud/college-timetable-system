@@ -143,8 +143,15 @@ export class TimetableEngine {
     };
 
     const variantResults: Array<{ config: typeof variantConfigs[0]; candidateEntries: any[]; validation: DetailedValidationReport }> = [];
+    const solveStartTime = Date.now();
 
     for (const vConfig of variantConfigs) {
+      // If we already have at least 1 valid timetable variant and total time > 20s, return early to prevent cloud HTTP timeout
+      if (variantResults.length > 0 && (Date.now() - solveStartTime) > 20000) {
+        console.log(`[Engine] Returning early after ${variantResults.length} variant(s) (${Date.now() - solveStartTime}ms) to prevent cloud gateway timeout.`);
+        break;
+      }
+
       console.log(`[Engine] Solving for ${vConfig.name} (Seed ${vConfig.seed})...`);
       const solverOutput = await this.runPythonSolver({ ...solverInput, variant: vConfig.variantNumber, randomSeed: vConfig.seed });
 
@@ -186,24 +193,22 @@ export class TimetableEngine {
             }
           });
 
-          for (const entry of vRes.candidateEntries) {
-            await tx.timetableEntry.create({
-              data: {
-                timetableId: tt.id,
-                facultyAssignmentId: entry.facultyAssignmentId,
-                dayOfWeek: entry.dayOfWeek,
-                slotIndex: entry.slotIndex,
-                startTime: entry.startTime,
-                endTime: entry.endTime,
-                subjectId: entry.subjectId,
-                teacherId: entry.teacherId,
-                roomId: entry.roomId,
-                divisionId: entry.divisionId,
-                batchId: entry.batchId,
-                type: entry.type,
-              }
-            });
-          }
+          await tx.timetableEntry.createMany({
+            data: vRes.candidateEntries.map((entry) => ({
+              timetableId: tt.id,
+              facultyAssignmentId: entry.facultyAssignmentId,
+              dayOfWeek: entry.dayOfWeek,
+              slotIndex: entry.slotIndex,
+              startTime: entry.startTime,
+              endTime: entry.endTime,
+              subjectId: entry.subjectId,
+              teacherId: entry.teacherId,
+              roomId: entry.roomId,
+              divisionId: entry.divisionId,
+              batchId: entry.batchId,
+              type: entry.type,
+            }))
+          });
 
           createdTimetables.push(tt);
         }
