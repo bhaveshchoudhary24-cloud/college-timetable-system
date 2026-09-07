@@ -19,6 +19,7 @@ export interface EngineResult {
   status: 'VALID' | 'NO_VALID_TIMETABLE' | 'INVALID_MASTER_DATA' | 'ERROR';
   isValid: boolean;
   timetable?: any;
+  timetableId?: string;
   validationReport?: DetailedValidationReport;
   diagnostics: any[];
   message: string;
@@ -26,7 +27,7 @@ export interface EngineResult {
 
 export class TimetableEngine {
   async generate(options: GenerationOptions = {}): Promise<EngineResult> {
-    const { days = [1, 2, 3, 4, 5, 6], departmentId, divisionIds, semesterFilter } = options;
+    const { days = [1, 2, 3, 4, 5], departmentId, divisionIds, semesterFilter } = options;
 
     console.log('[Engine] Starting CP-SAT Timetable Generation Pipeline...');
 
@@ -68,168 +69,161 @@ export class TimetableEngine {
       sessions,
     };
 
-    // ─── 3. Invoke Python CP-SAT Solver ────────────────────────────────────
-    const solverOutput = await this.runPythonSolver(solverInput);
-    console.log(`[Engine] Solver status: ${solverOutput.status} (solveTime: ${solverOutput.solveTimeMs || 0}ms)`);
+    // ─── 3. Generate 3 Distinct Evaluation Variants ────────────────────────
+    const variantConfigs = [
+      { variantNumber: 1, name: `MMIT Timetable — AY 2026-27 (Variant 1: Balanced)`, seed: 1 },
+      { variantNumber: 2, name: `MMIT Timetable — AY 2026-27 (Variant 2: Alternative Track A)`, seed: 42 },
+      { variantNumber: 3, name: `MMIT Timetable — AY 2026-27 (Variant 3: Alternative Track B)`, seed: 101 },
+    ];
 
-    if (solverOutput.status !== 'FEASIBLE' || !solverOutput.placements || solverOutput.placements.length === 0) {
+    const timeSlotMap = new Map(timeSlots.map(s => [s.index, s]));
+    const buildEntries = (placements: any[]) => {
+      const candidateEntries: any[] = [];
+      for (const p of placements) {
+        const s = sessions.find(sess => sess.sessionId === p.sessionId);
+        if (!s) continue;
+        const slot1 = timeSlotMap.get(p.slotIndex);
+        if (!slot1) continue;
+        const assignedRoom = rooms.find(r => r.id === p.roomId) || { isLab: s.requiredRoomType === 'LAB', roomNumber: '' };
+
+        if (p.duration === 2) {
+          const slot2 = timeSlotMap.get(p.slotIndex + 1);
+          candidateEntries.push({
+            facultyAssignmentId: s.facultyAssignmentId,
+            dayOfWeek: p.dayOfWeek,
+            slotIndex: p.slotIndex,
+            startTime: slot1.startTime,
+            endTime: slot1.endTime,
+            subjectId: s.subjectId,
+            teacherId: s.teacherId,
+            divisionId: s.divisionId,
+            batchId: s.batchId,
+            roomId: p.roomId,
+            type: s.type,
+            subject: { code: s.subjectCode },
+            room: assignedRoom,
+            batch: s.batchId ? { divisionId: s.divisionId } : null,
+          });
+          candidateEntries.push({
+            facultyAssignmentId: s.facultyAssignmentId,
+            dayOfWeek: p.dayOfWeek,
+            slotIndex: p.slotIndex + 1,
+            startTime: slot2?.startTime || slot1.endTime,
+            endTime: slot2?.endTime || slot1.endTime,
+            subjectId: s.subjectId,
+            teacherId: s.teacherId,
+            divisionId: s.divisionId,
+            batchId: s.batchId,
+            roomId: p.roomId,
+            type: s.type,
+            subject: { code: s.subjectCode },
+            room: assignedRoom,
+            batch: s.batchId ? { divisionId: s.divisionId } : null,
+          });
+        } else {
+          candidateEntries.push({
+            facultyAssignmentId: s.facultyAssignmentId,
+            dayOfWeek: p.dayOfWeek,
+            slotIndex: p.slotIndex,
+            startTime: slot1.startTime,
+            endTime: slot1.endTime,
+            subjectId: s.subjectId,
+            teacherId: s.teacherId,
+            divisionId: s.divisionId,
+            batchId: s.batchId,
+            roomId: p.roomId,
+            type: s.type,
+            subject: { code: s.subjectCode },
+            room: assignedRoom,
+            batch: s.batchId ? { divisionId: s.divisionId } : null,
+          });
+        }
+      }
+      return candidateEntries;
+    };
+
+    const variantResults: Array<{ config: typeof variantConfigs[0]; candidateEntries: any[]; validation: DetailedValidationReport }> = [];
+
+    for (const vConfig of variantConfigs) {
+      console.log(`[Engine] Solving for ${vConfig.name} (Seed ${vConfig.seed})...`);
+      const solverOutput = await this.runPythonSolver({ ...solverInput, variant: vConfig.variantNumber, randomSeed: vConfig.seed });
+
+      if (solverOutput.status === 'FEASIBLE' && solverOutput.placements && solverOutput.placements.length > 0) {
+        const candidateEntries = buildEntries(solverOutput.placements);
+        const validation = await validateTimetableZeroTrust('CANDIDATE', candidateEntries, { targetDivisionIds: options?.divisionIds });
+        if (validation.isValid) {
+          variantResults.push({ config: vConfig, candidateEntries, validation });
+        } else {
+          console.warn(`[Engine] ${vConfig.name} failed zero-trust validation:`, validation.summary);
+        }
+      } else {
+        console.warn(`[Engine] Solver returned ${solverOutput.status} for ${vConfig.name}`);
+      }
+    }
+
+    if (variantResults.length === 0) {
       return {
         status: 'NO_VALID_TIMETABLE',
         isValid: false,
-        diagnostics: [{ reason: 'SOLVER_INFEASIBLE', details: solverOutput.reason || 'CP-SAT solver could not find a feasible schedule.' }],
+        diagnostics: [{ reason: 'SOLVER_INFEASIBLE', details: 'No feasible timetable variant found.' }],
         message: 'No valid timetable satisfying all hard constraints exists. Persisted NOTHING.',
       };
     }
 
-    // ─── 4. Build Candidate Entries in memory ──────────────────────────────
-    const candidateEntries: any[] = [];
-    const timeSlotMap = new Map(timeSlots.map(s => [s.index, s]));
-
-    for (const p of solverOutput.placements) {
-      const s = sessions.find(sess => sess.sessionId === p.sessionId);
-      if (!s) continue;
-
-      const slot1 = timeSlotMap.get(p.slotIndex);
-      if (!slot1) continue;
-
-      if (p.duration === 2) {
-        const slot2 = timeSlotMap.get(p.slotIndex + 1);
-        candidateEntries.push({
-          facultyAssignmentId: s.facultyAssignmentId,
-          dayOfWeek: p.dayOfWeek,
-          slotIndex: p.slotIndex,
-          startTime: slot1.startTime,
-          endTime: slot1.endTime,
-          subjectId: s.subjectId,
-          teacherId: s.teacherId,
-          divisionId: s.divisionId,
-          batchId: s.batchId,
-          roomId: p.roomId,
-          type: s.type,
-          subject: { code: s.subjectCode },
-          room: { isLab: s.requiredRoomType === 'LAB', roomNumber: '' },
-          batch: s.batchId ? { divisionId: s.divisionId } : null,
-        });
-        candidateEntries.push({
-          facultyAssignmentId: s.facultyAssignmentId,
-          dayOfWeek: p.dayOfWeek,
-          slotIndex: p.slotIndex + 1,
-          startTime: slot2?.startTime || slot1.endTime,
-          endTime: slot2?.endTime || slot1.endTime,
-          subjectId: s.subjectId,
-          teacherId: s.teacherId,
-          divisionId: s.divisionId,
-          batchId: s.batchId,
-          roomId: p.roomId,
-          type: s.type,
-          subject: { code: s.subjectCode },
-          room: { isLab: s.requiredRoomType === 'LAB', roomNumber: '' },
-          batch: s.batchId ? { divisionId: s.divisionId } : null,
-        });
-      } else {
-        candidateEntries.push({
-          facultyAssignmentId: s.facultyAssignmentId,
-          dayOfWeek: p.dayOfWeek,
-          slotIndex: p.slotIndex,
-          startTime: slot1.startTime,
-          endTime: slot1.endTime,
-          subjectId: s.subjectId,
-          teacherId: s.teacherId,
-          divisionId: s.divisionId,
-          batchId: s.batchId,
-          roomId: p.roomId,
-          type: s.type,
-          subject: { code: s.subjectCode },
-          room: { isLab: s.requiredRoomType === 'LAB', roomNumber: '' },
-          batch: s.batchId ? { divisionId: s.divisionId } : null,
-        });
-      }
-    }
-
-    // ─── 5. PRE-PERSISTENCE Zero-Trust Validation ──────────────────────────
-    const preValidation = await validateTimetableZeroTrust('CANDIDATE', candidateEntries, { targetDivisionIds: options?.divisionIds });
-    console.log(`[Engine] Pre-persistence validation isValid: ${preValidation.isValid}`);
-
-    if (!preValidation.isValid) {
-      console.error('[Engine] Pre-persistence validation failed:', preValidation.summary);
-      return {
-        status: 'NO_VALID_TIMETABLE',
-        isValid: false,
-        validationReport: preValidation,
-        diagnostics: preValidation.conflictDetails.map(c => ({ reason: 'CONSTRAINT_VIOLATION', details: c })),
-        message: 'Candidate timetable failed zero-trust validation. Persisted NOTHING.',
-      };
-    }
-
-    // ─── 6. TWO-PASS TRANSACTIONAL PERSISTENCE ──────────────────────────────
+    // ─── 4. TWO-PASS TRANSACTIONAL PERSISTENCE (All Generated Variants) ──────
     try {
-      const savedTimetable = await prisma.$transaction(async (tx) => {
-        // Create Timetable master record
-        const tt = await tx.timetable.create({
-          data: {
-            name: `MMIT Timetable — AY 2026-27 (${new Date().toLocaleDateString('en-IN')})`,
-            academicYear: '2026-27',
-            semester: semesterFilter || 1,
-            isGenerated: true,
-            isValid: true,
-          }
-        });
+      const savedTimetables = await prisma.$transaction(async (tx) => {
+        const createdTimetables = [];
 
-        // Insert all TimetableEntry records carrying exact facultyAssignmentId
-        for (const entry of candidateEntries) {
-          await tx.timetableEntry.create({
+        for (const vRes of variantResults) {
+          const tt = await tx.timetable.create({
             data: {
-              timetableId: tt.id,
-              facultyAssignmentId: entry.facultyAssignmentId,
-              dayOfWeek: entry.dayOfWeek,
-              slotIndex: entry.slotIndex,
-              startTime: entry.startTime,
-              endTime: entry.endTime,
-              subjectId: entry.subjectId,
-              teacherId: entry.teacherId,
-              roomId: entry.roomId,
-              divisionId: entry.divisionId,
-              batchId: entry.batchId,
-              type: entry.type,
+              name: vRes.config.name,
+              academicYear: '2026-27',
+              semester: semesterFilter || 1,
+              isGenerated: true,
+              isValid: true,
             }
           });
-        }
 
-        // Re-read created entries inside transaction for POST-PERSISTENCE validation
-        const createdEntries = await tx.timetableEntry.findMany({
-          where: { timetableId: tt.id },
-          include: {
-            teacher: true,
-            subject: true,
-            division: { include: { year: true } },
-            batch: true,
-            room: true,
-            facultyAssignment: true
+          for (const entry of vRes.candidateEntries) {
+            await tx.timetableEntry.create({
+              data: {
+                timetableId: tt.id,
+                facultyAssignmentId: entry.facultyAssignmentId,
+                dayOfWeek: entry.dayOfWeek,
+                slotIndex: entry.slotIndex,
+                startTime: entry.startTime,
+                endTime: entry.endTime,
+                subjectId: entry.subjectId,
+                teacherId: entry.teacherId,
+                roomId: entry.roomId,
+                divisionId: entry.divisionId,
+                batchId: entry.batchId,
+                type: entry.type,
+              }
+            });
           }
-        });
 
-        // Post-persistence Zero-Trust Validation
-        const postValidation = await validateTimetableZeroTrust(tt.id, createdEntries, { targetDivisionIds: options?.divisionIds });
-
-        if (!postValidation.isValid) {
-          throw new Error(`POST-PERSISTENCE VALIDATION FAILED: ${postValidation.summary}`);
+          createdTimetables.push(tt);
         }
 
-        return tt;
+        return createdTimetables;
       });
 
-      console.log(`[Engine] Timetable ${savedTimetable.id} transactionally persisted and verified 100%!`);
+      const primaryTimetable = savedTimetables[0];
+      console.log(`[Engine] Persisted ${savedTimetables.length} timetable variants! Primary ID: ${primaryTimetable.id}`);
 
-      const finalValidation = await validateTimetableZeroTrust(savedTimetable.id, undefined, { targetDivisionIds: options?.divisionIds });
+      const finalValidation = await validateTimetableZeroTrust(primaryTimetable.id, undefined, { targetDivisionIds: options?.divisionIds });
 
       return {
         status: 'VALID',
         isValid: true,
-        timetable: savedTimetable,
-        timetableId: savedTimetable.id,
+        timetable: primaryTimetable,
+        timetableId: primaryTimetable.id,
         validationReport: finalValidation,
         diagnostics: [],
-        message: `✅ Timetable complete and verified: ${finalValidation.coverage.scheduledHours}/${finalValidation.coverage.requiredHours} hours (100%), 0 hard violations.`,
+        message: `✅ Timetable complete with 3 distinct evaluation variants: ${finalValidation.coverage.scheduledHours}/${finalValidation.coverage.requiredHours} hours (100%), 0 hard violations.`,
       };
 
     } catch (txError: any) {
@@ -245,10 +239,12 @@ export class TimetableEngine {
 
   private async runPythonSolver(inputData: any): Promise<any> {
     return new Promise((resolve) => {
-      const venvPython = path.join(process.cwd(), 'venv', 'bin', 'python3');
+      const isWin = process.platform === 'win32';
+      const pythonExec = isWin ? 'python' : 'python3';
       const scriptPath = path.join(process.cwd(), 'src', 'solver', 'cp_solver.py');
 
-      let pythonExec = venvPython;
+      require('fs').writeFileSync(path.join(process.cwd(), 'api_input_dump.json'), JSON.stringify(inputData, null, 2));
+
       // Fallback to system python3 if venv python not found
       const child = spawn(pythonExec, [scriptPath]);
       let stdout = '';

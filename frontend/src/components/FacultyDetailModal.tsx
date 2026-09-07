@@ -145,13 +145,31 @@ export function FacultyDetailModal({
                       const proj = a.projectHours || (a.type === 'PROJECT' || a.type === 'SEMINAR' ? a.weeklyHours : 0);
                       const tot = a.totalHours || (th + pr + tu + proj);
 
+                      // Accurately determine Class Name (SE, TE, BE)
+                      let displayClass = a.className;
+                      const yr = a.division?.year?.year;
+                      if (yr === 2) displayClass = 'SE';
+                      else if (yr === 3) displayClass = 'TE';
+                      else if (yr === 4) displayClass = 'BE';
+                      else {
+                        const code = a.courseCode || a.subject?.code || '';
+                        if (code.startsWith('PCC-20') || code.startsWith('HSMC-20') || code.startsWith('EEM-24') || code.startsWith('CEF-26')) displayClass = 'SE';
+                        else if (code.startsWith('PCC30') || code.startsWith('PEC32') || code.startsWith('MDM33') || code.startsWith('OLE34') || code.startsWith('ELC34')) displayClass = 'TE';
+                        else if (code.startsWith('4102')) displayClass = 'BE';
+                      }
+
+                      const displayBatch = a.batchName || a.batch?.name || (a.batchId ? (a.batch?.name || 'A1') : 'All');
+                      const displayCourseCode = a.courseCode || a.subject?.code || '';
+                      const displayCourseName = a.courseName || a.subject?.name || '';
+                      const displayDivision = a.divisionName || a.division?.name || 'A';
+
                       return (
                         <tr key={a.id || idx} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-2.5 py-2 font-bold text-slate-900 whitespace-nowrap">{a.className || 'SE'}</td>
-                          <td className="px-2.5 py-2 whitespace-nowrap"><span className="mmit-badge-blue text-[10px] px-2 py-0.2">{a.divisionName || a.division?.name || 'A'}</span></td>
-                          <td className="px-2.5 py-2 whitespace-nowrap"><span className="mmit-badge-gray text-[10px] px-1.5 py-0.2 font-bold">{a.batchName || 'All'}</span></td>
-                          <td className="px-2.5 py-2 whitespace-nowrap"><span className="mmit-badge-red font-mono text-[10px] px-1.5 py-0.2">{a.courseCode || a.subject?.code}</span></td>
-                          <td className="px-2.5 py-2 font-semibold text-slate-800 text-xs">{a.courseName || a.subject?.name}</td>
+                          <td className="px-2.5 py-2 font-bold text-slate-900 whitespace-nowrap">{displayClass || 'SE'}</td>
+                          <td className="px-2.5 py-2 whitespace-nowrap"><span className="mmit-badge-blue text-[10px] px-2 py-0.2">{displayDivision}</span></td>
+                          <td className="px-2.5 py-2 whitespace-nowrap"><span className="mmit-badge-gray text-[10px] px-1.5 py-0.2 font-bold">{displayBatch}</span></td>
+                          <td className="px-2.5 py-2 whitespace-nowrap"><span className="mmit-badge-red font-mono text-[10px] px-1.5 py-0.2">{displayCourseCode}</span></td>
+                          <td className="px-2.5 py-2 font-semibold text-slate-800 text-xs">{displayCourseName}</td>
                           <td className="px-2 py-2 text-center font-semibold text-slate-700">{th}</td>
                           <td className="px-2 py-2 text-center font-semibold text-slate-700">{pr}</td>
                           <td className="px-2 py-2 text-center font-semibold text-slate-700">{tu}</td>
@@ -169,7 +187,7 @@ export function FacultyDetailModal({
                             )}
                             {onDeleteAllocation && (
                               <button
-                                onClick={() => onDeleteAllocation(a.id, a.courseName || a.courseCode || 'Assignment')}
+                                onClick={() => onDeleteAllocation(a.id, displayCourseName || displayCourseCode || 'Assignment')}
                                 className="p-1 rounded hover:bg-red-100 text-slate-600 hover:text-red-600 transition-colors cursor-pointer"
                                 title="Delete Assignment"
                               >

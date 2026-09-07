@@ -6,9 +6,13 @@ import {
   Settings, Save, RotateCcw, ChevronRight,
   Clock, Building2, Calendar, Cpu, CheckCircle2,
   AlertTriangle, Info, Loader2, BarChart2, Users,
-  BookOpen, DoorOpen, CalendarDays, Layers
+  BookOpen, DoorOpen, CalendarDays, Layers, Lock,
+  KeyRound, ShieldCheck, Eye, EyeOff, AlertCircle,
+  Sun, Moon, Palette
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useTheme } from "@/context/ThemeContext";
 
 interface TimeSlotConfig {
   index: number;
@@ -65,12 +69,14 @@ interface SystemStats {
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SECTIONS = [
   { id: "general", label: "General", icon: Building2 },
+  { id: "security", label: "Admin Security & Password", icon: ShieldCheck },
   { id: "timetable", label: "Timetable Schedule", icon: Clock },
   { id: "generation", label: "Generation Preferences", icon: Cpu },
   { id: "stats", label: "System Overview", icon: BarChart2 },
 ];
 
 export default function SettingsPage() {
+  const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,6 +84,18 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [activeSection, setActiveSection] = useState("general");
   const [error, setError] = useState<string | null>(null);
+
+  // Change Password State
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -152,6 +170,82 @@ export default function SettingsPage() {
     updateSetting("workingDays", days);
   };
 
+  const resetPasswordForm = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowCurrentPw(false);
+    setShowNewPw(false);
+    setShowConfirmPw(false);
+    setPwError(null);
+    setPwSuccess(null);
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+    setPwSuccess(null);
+
+    if (!currentPassword) {
+      setPwError("Please enter your current administrator password.");
+      return;
+    }
+
+    if (!newPassword) {
+      setPwError("Please enter your new password.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPwError("New password must be at least 6 characters long.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPwError("New password and confirm password do not match.");
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setPwError("New password cannot be the same as your current password.");
+      return;
+    }
+
+    setPwLoading(true);
+
+    try {
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem('mmit_auth_token') : null;
+      const res = await fetch(apiUrl('/api/auth/change-password'), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+          confirmPassword
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setPwSuccess("Password updated successfully! Please use your new password next time you log in.");
+        setTimeout(() => {
+          setIsPasswordModalOpen(false);
+          resetPasswordForm();
+        }, 1800);
+      } else {
+        setPwError(data.message || "Failed to update password. Please verify your current password.");
+      }
+    } catch (err) {
+      setPwError("Network error. Unable to reach server to change password.");
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -178,11 +272,11 @@ export default function SettingsPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="mmit-badge-red">System</span>
-            <span className="text-xs font-semibold text-slate-500">Configuration</span>
+            <span className="text-xs font-semibold text-slate-500">Configuration & Security</span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Settings</h1>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-1">System Settings</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Configure college information, timetable structure, and generation preferences.
+            Configure college parameters, administrator credentials, schedule timing, and scheduling preferences.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -208,9 +302,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col md:flex-row gap-6">
         {/* Sidebar */}
-        <div className="w-52 shrink-0">
+        <div className="w-full md:w-56 shrink-0">
           <nav className="space-y-1 bg-white rounded-xl border border-slate-200 p-2 shadow-2xs">
             {SECTIONS.map(({ id, label, icon: Icon }) => (
               <button
@@ -223,7 +317,7 @@ export default function SettingsPage() {
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                {label}
+                <span>{label}</span>
                 {activeSection === id && <ChevronRight className="w-3 h-3 ml-auto" />}
               </button>
             ))}
@@ -236,7 +330,7 @@ export default function SettingsPage() {
           {activeSection === "general" && settings && (
             <>
               <SectionCard title="College Information" icon={Building2}>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FieldGroup label="College Name">
                     <input
                       className="mmit-input"
@@ -273,6 +367,76 @@ export default function SettingsPage() {
                 </div>
               </SectionCard>
 
+              {/* Theme & Appearance Configuration */}
+              <SectionCard title="Appearance & Display Theme" icon={Palette}>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                  Select your preferred interface color theme. Preferences are saved automatically and synchronized across sessions.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div
+                    onClick={() => setTheme('light')}
+                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-3.5 ${
+                      theme === 'light'
+                        ? 'border-[#C8102E] bg-red-50/40 dark:bg-red-950/20 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-[#131b2e]'
+                    }`}
+                  >
+                    <div className={`p-2.5 rounded-lg ${theme === 'light' ? 'bg-[#C8102E] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                      <Sun className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Light Academic Theme</span>
+                        {theme === 'light' && <span className="mmit-badge-red text-[10px] px-1.5 py-0.2">Active</span>}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Classic high-contrast institutional theme with official MMIT red palette.</p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setTheme('dark')}
+                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center gap-3.5 ${
+                      theme === 'dark'
+                        ? 'border-[#C8102E] bg-red-50/40 dark:bg-red-950/20 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-[#131b2e]'
+                    }`}
+                  >
+                    <div className={`p-2.5 rounded-lg ${theme === 'dark' ? 'bg-[#C8102E] text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                      <Moon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Dark Slate Theme</span>
+                        {theme === 'dark' && <span className="mmit-badge-red text-[10px] px-1.5 py-0.2">Active</span>}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Modern low-glare dark theme optimized for timetable planning in low light.</p>
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              {/* Quick Admin Security Banner inside General */}
+              <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-xl border border-slate-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-white/10 rounded-lg text-[#C8102E] bg-white">
+                    <KeyRound className="w-5 h-5 text-[#C8102E]" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-white">Administrator Credentials</h3>
+                    <p className="text-xs text-slate-300">
+                      Manage administrator login password and credential security.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { resetPasswordForm(); setIsPasswordModalOpen(true); }}
+                  className="px-4 py-2 bg-[#C8102E] hover:bg-[#990000] text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  Change Password
+                </button>
+              </div>
+
               <SectionCard title="Working Days" icon={Calendar}>
                 <p className="text-xs text-slate-500 mb-3">Select the days classes are held.</p>
                 <div className="flex gap-2 flex-wrap">
@@ -293,6 +457,70 @@ export default function SettingsPage() {
                 <p className="text-[11px] text-slate-400 mt-2">
                   {settings.workingDays.length} working days selected
                 </p>
+              </SectionCard>
+            </>
+          )}
+
+          {/* ── Security & Authentication Section ── */}
+          {activeSection === "security" && (
+            <>
+              <SectionCard title="Administrator Security & Password Management" icon={ShieldCheck}>
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="mmit-badge-red font-mono text-xs">SUPER_ADMIN</span>
+                        <span className="text-xs font-bold text-slate-800">Primary Administrator Account</span>
+                      </div>
+                      <p className="text-xs text-slate-600">
+                        Login Identifier: <span className="font-bold text-slate-900 font-mono">admin</span> or <span className="font-bold text-slate-900 font-mono">admin@mmit.edu.in</span>
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Controls system-wide timetable generation, department teaching loads, rooms, and faculty allocations.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => { resetPasswordForm(); setIsPasswordModalOpen(true); }}
+                      className="mmit-btn-primary flex items-center gap-2 cursor-pointer shrink-0"
+                    >
+                      <KeyRound className="w-4 h-4" />
+                      Change Password
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                    <div className="p-3.5 rounded-lg border border-slate-200 bg-white">
+                      <div className="flex items-center gap-2 text-slate-700 font-bold text-xs">
+                        <Lock className="w-4 h-4 text-[#C8102E]" />
+                        Bcrypt Encryption
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Salted one-way hash with 10 rounds of computational complexity.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg border border-slate-200 bg-white">
+                      <div className="flex items-center gap-2 text-slate-700 font-bold text-xs">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        JWT Session Tokens
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Cryptographically signed access tokens protecting all backend endpoints.
+                      </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg border border-slate-200 bg-white">
+                      <div className="flex items-center gap-2 text-slate-700 font-bold text-xs">
+                        <AlertCircle className="w-4 h-4 text-blue-600" />
+                        Rate-Limit Guard
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Automatic cooldown lockdown after 5 consecutive failed attempts.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </SectionCard>
             </>
           )}
@@ -417,7 +645,7 @@ export default function SettingsPage() {
               </SectionCard>
 
               <SectionCard title="Hard Constraint Limits" icon={Settings}>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FieldGroup label="Max Faculty Hours / Day">
                     <input
                       type="number" min={1} max={10}
@@ -489,20 +717,20 @@ export default function SettingsPage() {
               </SectionCard>
 
               <SectionCard title="Time Slot Configuration" icon={Clock}>
-                <div className="flex gap-4">
-                  <div className="flex-1 p-3 bg-white rounded-lg border border-slate-200 text-center">
+                <div className="flex gap-4 flex-wrap sm:flex-nowrap">
+                  <div className="flex-1 min-w-[120px] p-3 bg-white rounded-lg border border-slate-200 text-center">
                     <p className="text-2xl font-black text-[#C8102E]">{stats.timeSlots.teaching}</p>
                     <p className="text-xs font-semibold text-slate-500">Teaching Slots / Day</p>
                   </div>
-                  <div className="flex-1 p-3 bg-white rounded-lg border border-slate-200 text-center">
+                  <div className="flex-1 min-w-[120px] p-3 bg-white rounded-lg border border-slate-200 text-center">
                     <p className="text-2xl font-black text-amber-500">{stats.timeSlots.breaks}</p>
                     <p className="text-xs font-semibold text-slate-500">Break Slots / Day</p>
                   </div>
-                  <div className="flex-1 p-3 bg-white rounded-lg border border-slate-200 text-center">
+                  <div className="flex-1 min-w-[120px] p-3 bg-white rounded-lg border border-slate-200 text-center">
                     <p className="text-2xl font-black text-slate-700">{stats.timeSlots.teaching * 5}</p>
                     <p className="text-xs font-semibold text-slate-500">Teaching Slots / Week</p>
                   </div>
-                  <div className="flex-1 p-3 bg-white rounded-lg border border-slate-200 text-center">
+                  <div className="flex-1 min-w-[120px] p-3 bg-white rounded-lg border border-slate-200 text-center">
                     <p className="text-2xl font-black text-blue-600">3</p>
                     <p className="text-xs font-semibold text-slate-500">Practical Blocks / Day</p>
                   </div>
@@ -512,6 +740,166 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Change Password Modal Dialog ── */}
+      <Dialog 
+        open={isPasswordModalOpen} 
+        onOpenChange={(open) => {
+          setIsPasswordModalOpen(open);
+          if (!open) resetPasswordForm();
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-white border border-slate-200 shadow-2xl p-0 overflow-hidden">
+          {/* Header */}
+          <div className="bg-[#990000] text-white p-5">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-300" />
+                Change Administrator Password
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-red-100 mt-1">
+              Update password for the primary administrator account (admin).
+            </p>
+          </div>
+
+          <form onSubmit={handleChangePasswordSubmit} className="p-6 space-y-4">
+            {/* Status Alert Banners */}
+            {pwError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2.5 text-xs text-red-700 font-semibold animate-shake">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <span>{pwError}</span>
+              </div>
+            )}
+
+            {pwSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-2.5 text-xs text-emerald-700 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>{pwSuccess}</span>
+              </div>
+            )}
+
+            {/* Current Password Field */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Current Password</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">(required to verify identity)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showCurrentPw ? "text" : "password"}
+                  placeholder="Enter current password..."
+                  value={currentPassword}
+                  onChange={(e) => { setCurrentPassword(e.target.value); setPwError(null); }}
+                  className="w-full px-3 py-2 pr-10 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#990000] text-slate-900"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPw(!showCurrentPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* New Password Field */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                New Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? "text" : "password"}
+                  placeholder="Enter new password (min. 6 characters)..."
+                  value={newPassword}
+                  onChange={(e) => { setNewPassword(e.target.value); setPwError(null); }}
+                  className="w-full px-3 py-2 pr-10 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#990000] text-slate-900"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPw(!showNewPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm New Password Field */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Confirm New Password</span>
+                {newPassword && confirmPassword && (
+                  <span className={`text-[10px] font-bold ${newPassword === confirmPassword ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {newPassword === confirmPassword ? '✓ Passwords match' : '✗ Do not match'}
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPw ? "text" : "password"}
+                  placeholder="Re-enter new password..."
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setPwError(null); }}
+                  className="w-full px-3 py-2 pr-10 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:border-[#990000] text-slate-900"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPw(!showConfirmPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Password Validation Hints */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] space-y-1 text-slate-500">
+              <div className={`flex items-center gap-1.5 ${newPassword.length >= 6 ? 'text-emerald-600 font-semibold' : 'text-slate-400'}`}>
+                <span>{newPassword.length >= 6 ? '✓' : '•'}</span>
+                <span>Minimum 6 characters</span>
+              </div>
+              <div className={`flex items-center gap-1.5 ${newPassword && newPassword === confirmPassword ? 'text-emerald-600 font-semibold' : 'text-slate-400'}`}>
+                <span>{newPassword && newPassword === confirmPassword ? '✓' : '•'}</span>
+                <span>New passwords must match</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-2 flex justify-end gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => { setIsPasswordModalOpen(false); resetPasswordForm(); }}
+                disabled={pwLoading}
+              >
+                Cancel
+              </Button>
+              <button
+                type="submit"
+                disabled={pwLoading}
+                className="mmit-btn-primary flex items-center gap-2 cursor-pointer"
+              >
+                {pwLoading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Verifying & Updating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Update Password</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

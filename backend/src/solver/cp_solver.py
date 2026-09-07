@@ -103,7 +103,7 @@ def solve_with_ortools(input_data):
         batch_id = s.get('batchId')
         c_rooms  = candidate_rooms_for_session(s, rooms)
 
-        if s['type'] == 'PRACTICAL':
+        if s['type'] == 'PRACTICAL' or s.get('duration', 1) == 2:
             for day in working_days:
                 for (slot1, slot2) in valid_practical_pairs:
                     for r in c_rooms:
@@ -164,7 +164,23 @@ def solve_with_ortools(input_data):
         if len(vars_list) > 1:
             model.AddAtMostOne(vars_list)
 
-    for vars_list in division_slot_vars.values():
+    session_map = {s['sessionId']: s for s in sessions}
+    div_slot_subject_vars = defaultdict(list)
+    for (s_id, day, sl, r_id), var in placement_vars.items():
+        s = session_map.get(s_id)
+        if s and not s.get('batchId'):
+            subj_id = s.get('subjectId')
+            div_id = s.get('divisionId')
+            div_slot_subject_vars[(div_id, day, sl, subj_id)].append(var)
+
+    div_slot_active_subject_vars = defaultdict(list)
+    for (div_id, day, slot, subj_id), v_list in div_slot_subject_vars.items():
+        if v_list:
+            subj_active = model.NewBoolVar(f"div_subj_active_{div_id}_{day}_{slot}_{subj_id}")
+            model.AddMaxEquality(subj_active, v_list)
+            div_slot_active_subject_vars[(div_id, day, slot)].append(subj_active)
+
+    for vars_list in div_slot_active_subject_vars.values():
         if len(vars_list) > 1:
             model.AddAtMostOne(vars_list)
 
@@ -179,23 +195,40 @@ def solve_with_ortools(input_data):
 
     # Daily max 1 theory per subject per teacher per div
     subject_div_day_vars = defaultdict(list)
-    for s in sessions:
-        if s['type'] == 'LECTURE' and not s.get('batchId'):
-            s_id = s['sessionId']
-            subj_id = s['subjectId']
-            t_id = s['teacherId']
-            div_id = s['divisionId']
-            for day in working_days:
-                vars_for_day = [v for (sid, d, sl, rid), v in placement_vars.items() if sid == s_id and d == day]
-                subject_div_day_vars[(subj_id, t_id, div_id, day)].extend(vars_for_day)
+    session_map = {s['sessionId']: s for s in sessions}
+    for (s_id, day, sl, r_id), var in placement_vars.items():
+        s = session_map.get(s_id)
+        if s and s['type'] == 'LECTURE' and not s.get('batchId'):
+            subj_id = s.get('subjectId')
+            t_id = s.get('teacherId')
+            div_id = s.get('divisionId')
+            subject_div_day_vars[(subj_id, t_id, div_id, day)].append(var)
 
     for vars_list in subject_div_day_vars.values():
         if len(vars_list) > 1:
             model.AddAtMostOne(vars_list)
 
+    # HARD RULE: Daily max 1 practical/lab/tutorial session per subject per batch (separate days)
+    subject_batch_day_vars = defaultdict(list)
+    for (s_id, day, sl, r_id), var in placement_vars.items():
+        s = session_map.get(s_id)
+        if s and s.get('batchId'):
+            subj_id = s.get('subjectId')
+            batch_id = s.get('batchId')
+            subject_batch_day_vars[(subj_id, batch_id, day)].append(var)
+
+    for vars_list in subject_batch_day_vars.values():
+        if len(vars_list) > 1:
+            model.AddAtMostOne(vars_list)
+
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 15.0
+    solver.parameters.max_time_in_seconds = 60.0
     solver.parameters.num_search_workers = 4
+    seed_val = int(input_data.get('randomSeed', 0))
+    if seed_val == 0:
+        v_num = int(input_data.get('variant', 1))
+        seed_val = 1 if v_num == 1 else (42 if v_num == 2 else 101)
+    solver.parameters.random_seed = seed_val
     status = solver.Solve(model)
 
     solve_time_ms = int((time.time() - start_time) * 1000)
@@ -312,9 +345,9 @@ def solve_with_pure_cp(input_data):
                 subj_div_day.add(f"{subj_id}@{t_id}@{div_id}@{day}")
                 div_daily_theory_count[div_id][day] += 1
 
-        practical_sessions = [s for s in sessions if s['type'] == 'PRACTICAL']
-        theory_sessions    = [s for s in sessions if s['type'] == 'LECTURE']
-        tutorial_sessions  = [s for s in sessions if s['type'] == 'TUTORIAL']
+        practical_sessions = [s for s in sessions if s['type'] == 'PRACTICAL' or s.get('duration', 1) == 2]
+        theory_sessions    = [s for s in sessions if s['type'] == 'LECTURE' and s.get('duration', 1) == 1]
+        tutorial_sessions  = [s for s in sessions if s['type'] == 'TUTORIAL' and s.get('duration', 1) == 1]
 
         div_batches = defaultdict(set)
         for s in sessions:
@@ -339,6 +372,7 @@ def solve_with_pure_cp(input_data):
                     div_batch_practicals[s['divisionId']][s['batchId']].append(s)
 
             div_pract_slots_on_day = defaultdict(lambda: defaultdict(set))
+            batch_subj_days = defaultdict(set)
 
             for div_id, batch_map in div_batch_practicals.items():
                 batch_ids = list(batch_map.keys())
@@ -368,6 +402,8 @@ def solve_with_pure_cp(input_data):
 
                         placed_for_batch = None
                         for s in remaining[b_id]:
+                            if (s['subjectId'], day) in batch_subj_days[b_id]:
+                                continue
                             if s['subjectId'] in used_subjects_block:
                                 continue
                             if not teacher_free(s['teacherId'], day, [slot1, slot2]):
@@ -392,6 +428,8 @@ def solve_with_pure_cp(input_data):
 
                         if not placed_for_batch:
                             for s in remaining[b_id]:
+                                if (s['subjectId'], day) in batch_subj_days[b_id]:
+                                    continue
                                 if not teacher_free(s['teacherId'], day, [slot1, slot2]):
                                     continue
                                 if s['teacherId'] in used_teachers_block:
@@ -431,6 +469,7 @@ def solve_with_pure_cp(input_data):
                                 r_id, day, [slot1, slot2],
                                 sess['type'], sess['duration']
                             )
+                            batch_subj_days[b_id].add((sess['subjectId'], day))
                             remaining[b_id].remove(sess)
 
                 # Fallback for unplaced practicals

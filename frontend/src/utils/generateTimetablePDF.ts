@@ -1,6 +1,7 @@
 /**
  * MMIT Institutional Timetable A4 Landscape PDF Export Utility
  * Ensures non-empty, print-ready, high-resolution PDF download with full headers, matrix, workloads, and signatures.
+ * Clean, institutional print styling is preserved in both Light and Dark themes.
  */
 
 export async function exportTimetableToPDF(elementId: string, filename: string = 'MMIT_Timetable.pdf') {
@@ -31,36 +32,77 @@ export async function exportTimetableToPDF(elementId: string, filename: string =
       return;
     }
 
-    // Render high resolution canvas
+    // Scroll to top to prevent html2canvas from cutting off the image
+    const originalScrollY = window.scrollY;
+    window.scrollTo(0, 0);
+
+    // Save dark mode state and temporarily enforce clean institutional light layout for PDF capture
+    const isDark = document.documentElement.classList.contains('dark');
+    if (isDark) {
+      document.documentElement.classList.remove('dark');
+    }
+
+    // Render high resolution canvas, forcing a wide desktop window width so columns aren't squished
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
       logging: false,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      scrollY: 0,
+      windowWidth: Math.max(1200, document.documentElement.scrollWidth),
+      windowHeight: document.documentElement.scrollHeight,
+      onclone: (clonedDoc: Document) => {
+        const clonedRoot = clonedDoc.documentElement;
+        clonedRoot.classList.remove('dark');
+        const clonedArea = clonedDoc.getElementById(elementId);
+        if (clonedArea) {
+          clonedArea.style.backgroundColor = '#ffffff';
+          clonedArea.style.color = '#000000';
+          // Ensure all text elements inside are crisp and visible
+          clonedArea.querySelectorAll('*').forEach((node: any) => {
+            if (node.style) {
+              if (node.classList.contains('text-white') || node.tagName === 'TH' && node.classList.contains('bg-[#C8102E]')) {
+                node.style.color = '#ffffff';
+              }
+            }
+          });
+        }
+      }
     });
+
+    // Restore dark mode state immediately
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    }
+
+    // Restore scroll position
+    window.scrollTo(0, originalScrollY);
 
     const imgData = canvas.toDataURL('image/png');
 
-    // Create A4 Landscape PDF (297mm x 210mm)
-    const pdf = new jsPDF('landscape', 'mm', 'a4');
+    // Create A4 Landscape PDF (297mm x 210mm) using the options object syntax
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pdfWidth = 297;
     const pdfHeight = 210;
 
-    const imgWidth = pdfWidth - 20; // 10mm margins
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    const margin = 8;
+    const maxImgWidth = pdfWidth - (margin * 2);
+    const maxImgHeight = pdfHeight - (margin * 2);
+    
+    let imgWidth = maxImgWidth;
+    let imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    let heightLeft = imgHeight;
-    let position = 10;
-
-    pdf.addImage(imgData, 'PNG', 10, position, imgWidth, Math.min(imgHeight, pdfHeight - 20));
-    heightLeft -= (pdfHeight - 20);
-
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 10, position + 10, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
+    // Scale down further if it's too tall to fit on one page
+    if (imgHeight > maxImgHeight) {
+      const scaleRatio = maxImgHeight / imgHeight;
+      imgHeight = imgHeight * scaleRatio;
+      imgWidth = imgWidth * scaleRatio;
     }
+
+    // Center horizontally
+    const xOffset = (pdfWidth - imgWidth) / 2;
+
+    pdf.addImage(imgData, 'PNG', xOffset, margin, imgWidth, imgHeight);
 
     pdf.save(filename);
   } catch (error) {

@@ -134,6 +134,8 @@ export async function expandFacultyAssignmentsToSessions(options: {
 
   const sessions: ExpandedSession[] = [];
   let counter = 0;
+  
+  const subjectBatchIndexTracker = new Map<string, number>();
 
   for (const a of assignments) {
     const semester = (a.semester && a.semester !== 1) ? a.semester : a.subject.semester;
@@ -156,9 +158,29 @@ export async function expandFacultyAssignmentsToSessions(options: {
     };
 
     // ── Resolve allowed rooms ─────────────────────────────────────────────────
-    let allowedClassrooms: string[] = classroomRooms.map(r => r.id);
-    let allowedLabs:       string[] = labRooms.map(r => r.id);
-    let allowedAny:        string[] = rooms.map(r => r.id);
+    const className = a.division.year?.year?.toString() || '';
+    const divName = a.divisionName || a.division.name;
+
+    let allowedClassrooms = rooms.filter(r => !r.isLab).map(r => r.id);
+    let allowedLabs = rooms.filter(r => r.isLab).map(r => r.id);
+    let allowedAny = rooms.map(r => r.id);
+
+    // Lock classroom rooms specifically for SE-A (E101), SE-B (E104), TE-A (E102), TE-B (E103) for theory
+    if (!a.batch && a.practicalHours === 0 && !a.subject.labRequired) {
+      if (divName === 'A' && a.division.year?.year === 3) {
+        const e102 = classroomRooms.find(r => r.roomNumber.toUpperCase() === 'E102');
+        if (e102) allowedClassrooms = [e102.id];
+      } else if (divName === 'B' && a.division.year?.year === 3) {
+        const e103 = classroomRooms.find(r => r.roomNumber.toUpperCase() === 'E103');
+        if (e103) allowedClassrooms = [e103.id];
+      } else if (divName === 'A' && a.division.year?.year === 2) {
+        const e101 = classroomRooms.find(r => r.roomNumber.toUpperCase() === 'E101');
+        if (e101) allowedClassrooms = [e101.id];
+      } else if (divName === 'B' && a.division.year?.year === 2) {
+        const e104 = classroomRooms.find(r => r.roomNumber.toUpperCase() === 'E104');
+        if (e104) allowedClassrooms = [e104.id];
+      }
+    }
 
     if (a.allowedLocations && a.allowedLocations.length > 0) {
       const specifiedRooms = a.allowedLocations
@@ -171,16 +193,143 @@ export async function expandFacultyAssignmentsToSessions(options: {
         const specAllIds = [...new Set(specifiedRooms.map(r => r.id))];
 
         allowedLabs       = specLabIds.length > 0 ? specLabIds : labRooms.map(r => r.id);
-        allowedClassrooms = specClsIds.length > 0 ? specClsIds : classroomRooms.map(r => r.id);
+        if (specClsIds.length > 0) allowedClassrooms = specClsIds; 
         allowedAny        = specAllIds.length > 0 ? specAllIds : rooms.map(r => r.id);
       }
     }
 
-    // ── 1. THEORY (LECTURE) Sessions ──────────────────────────────────────────
-    // Theory is ALWAYS division-wide (batchId = null)
+    const trackerKey = `${a.subjectId}_${a.divisionId}`;
+    let currentBatchIndex = subjectBatchIndexTracker.get(trackerKey) || 0;
+
+    const baseInfo = {
+      facultyAssignmentId: a.id,
+      departmentId:        a.departmentId || a.teacher.departmentId,
+      semester,
+      className,
+      divisionId:   a.divisionId,
+      divisionName: divName,
+      subjectId:    a.subjectId,
+      subjectCode:  a.courseCode || a.subject.code,
+      subjectName:  a.courseName || a.subject.name,
+      teacherId:    a.teacherId,
+      teacherName:  a.teacher.name,
+    };
+
+    // ── 1. PRACTICAL Sessions ─────────────────────────────────────────────────
+    if (a.practicalHours > 0) {
+      const numBlocks = Math.floor(a.practicalHours / 2);
+      const divBatches = [...(divBatchesByName.get(a.divisionId)?.values() || [])];
+      const hasExplicitLocations = a.allowedLocations && a.allowedLocations.length > 0;
+      const prAllowedRoomIds = hasExplicitLocations ? allowedAny : allowedLabs;
+      const prRequiredType = hasExplicitLocations ? 'ANY' : 'LAB';
+
+      if (divBatches.length > 0) {
+        const assignedBatches = resolveBatchesForAssignment(a);
+        if (assignedBatches.length > 0) {
+          for (let i = 0; i < numBlocks; i++) {
+            const batch = assignedBatches[currentBatchIndex % assignedBatches.length];
+            currentBatchIndex++;
+            sessions.push({
+              ...baseInfo,
+              sessionId:        `SESS_${a.id}_PR_${i + 1}_${++counter}`,
+              batchId:          batch.id,
+              batchName:        batch.name,
+              type:             'PRACTICAL',
+              duration:         2,
+              requiredRoomType: prRequiredType,
+              allowedRoomIds:   prAllowedRoomIds,
+            });
+          }
+        } else {
+          for (let i = 0; i < numBlocks; i++) {
+            sessions.push({
+              ...baseInfo,
+              sessionId:        `SESS_${a.id}_PR_${i + 1}_${++counter}`,
+              batchId:          null,
+              batchName:        null,
+              type:             'PRACTICAL',
+              duration:         2,
+              requiredRoomType: prRequiredType,
+              allowedRoomIds:   prAllowedRoomIds,
+            });
+          }
+        }
+      } else {
+        for (let i = 0; i < numBlocks; i++) {
+          sessions.push({
+            ...baseInfo,
+            sessionId:        `SESS_${a.id}_PR_${i + 1}_${++counter}`,
+            batchId:          null,
+            batchName:        null,
+            type:             'PRACTICAL',
+            duration:         2,
+            requiredRoomType: prRequiredType,
+            allowedRoomIds:   prAllowedRoomIds,
+          });
+        }
+      }
+    }
+
+    // ── 2. TUTORIAL Sessions ───────────────────────────────────────────────────
+    if (a.tutorialHours > 0) {
+      const divBatches = [...(divBatchesByName.get(a.divisionId)?.values() || [])];
+      const isTwoHourBlock = a.tutorialHours === 2;
+      const numBlocks = isTwoHourBlock ? 1 : a.tutorialHours;
+      const dur = (isTwoHourBlock ? 2 : 1) as (1 | 2);
+
+      if (divBatches.length > 0) {
+        const assignedBatches = resolveBatchesForAssignment(a);
+        if (assignedBatches.length > 0) {
+          for (let i = 0; i < numBlocks; i++) {
+            const batch = assignedBatches[currentBatchIndex % assignedBatches.length];
+            currentBatchIndex++;
+            sessions.push({
+              ...baseInfo,
+              sessionId:        `SESS_${a.id}_TU_${i + 1}_${++counter}`,
+              batchId:          batch.id,
+              batchName:        batch.name,
+              type:             'TUTORIAL',
+              duration:         dur,
+              requiredRoomType: a.subject.name.includes('Robotics') ? 'CLASSROOM' : 'ANY',
+              allowedRoomIds:   a.subject.name.includes('Robotics') ? allowedClassrooms : allowedAny,
+            });
+          }
+        } else {
+          for (let i = 0; i < numBlocks; i++) {
+            sessions.push({
+              ...baseInfo,
+              sessionId:        `SESS_${a.id}_TU_${i + 1}_${++counter}`,
+              batchId:          null,
+              batchName:        null,
+              type:             'TUTORIAL',
+              duration:         dur,
+              requiredRoomType: a.subject.name.includes('Robotics') ? 'CLASSROOM' : 'ANY',
+              allowedRoomIds:   a.subject.name.includes('Robotics') ? allowedClassrooms : allowedAny,
+            });
+          }
+        }
+      } else {
+        for (let i = 0; i < numBlocks; i++) {
+          sessions.push({
+            ...baseInfo,
+            sessionId:        `SESS_${a.id}_TU_${i + 1}_${++counter}`,
+            batchId:          null,
+            batchName:        null,
+            type:             'TUTORIAL',
+            duration:         dur,
+            requiredRoomType: a.subject.name.includes('Robotics') ? 'CLASSROOM' : 'ANY',
+            allowedRoomIds:   a.subject.name.includes('Robotics') ? allowedClassrooms : allowedAny,
+          });
+        }
+      }
+    }
+    
+    subjectBatchIndexTracker.set(trackerKey, currentBatchIndex);
+
+    // ── 3. THEORY (LECTURE) Sessions ──────────────────────────────────────────
     for (let i = 0; i < a.theoryHours; i++) {
       sessions.push({
-        ...base,
+        ...baseInfo,
         sessionId:        `SESS_${a.id}_TH_${i + 1}_${++counter}`,
         batchId:          null,
         batchName:        null,
@@ -189,112 +338,6 @@ export async function expandFacultyAssignmentsToSessions(options: {
         requiredRoomType: 'CLASSROOM',
         allowedRoomIds:   allowedClassrooms,
       });
-    }
-
-    // ── 2. TUTORIAL Sessions ───────────────────────────────────────────────────
-    // MMIT: tutorials are batch-wise and may run in labs or classrooms (requiredRoomType='ANY')
-    if (a.tutorialHours > 0) {
-      const divBatches = [...(divBatchesByName.get(a.divisionId)?.values() || [])];
-      if (divBatches.length > 0) {
-        const assignedBatches = resolveBatchesForAssignment(a);
-        if (assignedBatches.length > 0) {
-          for (let i = 0; i < a.tutorialHours; i++) {
-            const batch = assignedBatches[i % assignedBatches.length];
-            sessions.push({
-              ...base,
-              sessionId:        `SESS_${a.id}_TU_${i + 1}_${++counter}`,
-              batchId:          batch.id,
-              batchName:        batch.name,
-              type:             'TUTORIAL',
-              duration:         1,
-              requiredRoomType: 'ANY',
-              allowedRoomIds:   allowedAny,
-            });
-          }
-        } else {
-          for (let i = 0; i < a.tutorialHours; i++) {
-            sessions.push({
-              ...base,
-              sessionId:        `SESS_${a.id}_TU_${i + 1}_${++counter}`,
-              batchId:          null,
-              batchName:        null,
-              type:             'TUTORIAL',
-              duration:         1,
-              requiredRoomType: 'ANY',
-              allowedRoomIds:   allowedAny,
-            });
-          }
-        }
-      } else {
-        for (let i = 0; i < a.tutorialHours; i++) {
-          sessions.push({
-            ...base,
-            sessionId:        `SESS_${a.id}_TU_${i + 1}_${++counter}`,
-            batchId:          null,
-            batchName:        null,
-            type:             'TUTORIAL',
-            duration:         1,
-            requiredRoomType: 'ANY',
-            allowedRoomIds:   allowedAny,
-          });
-        }
-      }
-    }
-
-    // ── 3. PRACTICAL Sessions ─────────────────────────────────────────────────
-    if (a.practicalHours > 0) {
-      const numBlocks = Math.floor(a.practicalHours / 2);
-      const divBatches = [...(divBatchesByName.get(a.divisionId)?.values() || [])];
-
-      if (divBatches.length > 0) {
-        // Division with batches → use MMIT batch assignment
-        const assignedBatches = resolveBatchesForAssignment(a);
-
-        if (assignedBatches.length > 0) {
-          // Round-robin: each block → one batch from assignedBatches
-          for (let i = 0; i < numBlocks; i++) {
-            const batch = assignedBatches[i % assignedBatches.length];
-            sessions.push({
-              ...base,
-              sessionId:        `SESS_${a.id}_PR_${i + 1}_${++counter}`,
-              batchId:          batch.id,
-              batchName:        batch.name,
-              type:             'PRACTICAL',
-              duration:         2,
-              requiredRoomType: 'LAB',
-              allowedRoomIds:   allowedLabs,
-            });
-          }
-        } else {
-          // No resolved batches — create division-wide practical blocks
-          for (let i = 0; i < numBlocks; i++) {
-            sessions.push({
-              ...base,
-              sessionId:        `SESS_${a.id}_PR_${i + 1}_${++counter}`,
-              batchId:          null,
-              batchName:        null,
-              type:             'PRACTICAL',
-              duration:         2,
-              requiredRoomType: 'LAB',
-              allowedRoomIds:   allowedLabs,
-            });
-          }
-        }
-      } else {
-        // Division with no batches — division-wide practical blocks
-        for (let i = 0; i < numBlocks; i++) {
-          sessions.push({
-            ...base,
-            sessionId:        `SESS_${a.id}_PR_${i + 1}_${++counter}`,
-            batchId:          null,
-            batchName:        null,
-            type:             'PRACTICAL',
-            duration:         2,
-            requiredRoomType: 'LAB',
-            allowedRoomIds:   allowedLabs,
-          });
-        }
-      }
     }
   }
 

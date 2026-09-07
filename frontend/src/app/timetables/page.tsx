@@ -27,10 +27,9 @@ export default function TimetablesPage() {
     }
   };
 
-  useEffect(() => {
-    fetch(apiUrl('/api/timetables'), {
-      headers: { 'Authorization': 'Bearer test-token' }
-    })
+  const fetchTimetables = () => {
+    setLoading(true);
+    fetch(apiUrl('/api/timetables'))
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -42,6 +41,10 @@ export default function TimetablesPage() {
         console.error(err);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchTimetables();
   }, []);
 
   return (
@@ -137,7 +140,13 @@ export default function TimetablesPage() {
 
       <GenerateModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          fetchTimetables();
+        }}
+        onGenerated={() => {
+          fetchTimetables();
+        }}
       />
     </div>
   );

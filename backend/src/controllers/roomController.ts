@@ -53,3 +53,45 @@ export const deleteRoom = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error deleting room', error });
   }
 };
+
+export const getLabMappings = async (req: Request, res: Response) => {
+  try {
+    const allowedLocations = await prisma.assignmentAllowedLocation.findMany({
+      include: {
+        assignment: {
+          include: {
+            division: { include: { year: true } },
+            batch: true,
+            subject: true,
+            teacher: true
+          }
+        }
+      },
+      orderBy: [
+        { roomNumber: 'asc' },
+        { batchName: 'asc' }
+      ]
+    });
+
+    const mappings = allowedLocations.map(loc => ({
+      id: loc.id,
+      roomNumber: loc.roomNumber,
+      roomName: loc.roomName,
+      isPreferred: loc.isPreferred,
+      className: loc.assignment.division?.year?.year === 2 ? 'SE' : (loc.assignment.division?.year?.year === 3 ? 'TE' : 'BE'),
+      divisionName: loc.assignment.division?.name,
+      batchName: loc.batchName,
+      subjectCode: loc.assignment.subject?.code,
+      subjectName: loc.assignment.subject?.name,
+      teacherName: loc.assignment.teacher?.name,
+      type: loc.assignment.type,
+      weeklyHours: loc.assignment.weeklyHours
+    }));
+
+    res.json(mappings);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching lab mappings', error });
+  }
+};
+
+

@@ -188,31 +188,32 @@ export async function validateTimetableZeroTrust(
     }
 
     // Room Type check
-    // PRACTICAL must be in a lab. LECTURE must be in a classroom.
+    // PRACTICAL must be in a lab (or explicitly allowed classroom/room). LECTURE must be in a classroom.
     // TUTORIAL is allowed in EITHER (labs or classrooms) per MMIT master data (requiredRoomType='ANY').
-    if (entry.type === 'PRACTICAL' && entry.room && !entry.room.isLab) {
+    const resolvedRoom = entry.room || roomById.get(entry.roomId);
+    const asgn = entry.facultyAssignmentId ? assignmentById.get(entry.facultyAssignmentId) : null;
+    const isExplicitlyAllowed = asgn?.allowedLocations?.some(
+      (loc: any) => loc.roomNumber.toUpperCase() === resolvedRoom?.roomNumber?.toUpperCase()
+    );
+
+    if (entry.type === 'PRACTICAL' && resolvedRoom && !resolvedRoom.isLab && !isExplicitlyAllowed) {
       violations.roomTypeViolations++;
-      conflictDetails.push(`Room Type Violation: Practical ${entry.subject?.code} in classroom ${entry.room.roomNumber}`);
-    } else if (entry.type === 'LECTURE' && entry.room && entry.room.isLab) {
+      conflictDetails.push(`Room Type Violation: Practical ${entry.subject?.code || asgn?.subject?.code} in classroom ${resolvedRoom.roomNumber}`);
+    } else if (entry.type === 'LECTURE' && resolvedRoom && resolvedRoom.isLab && !isExplicitlyAllowed) {
       violations.roomTypeViolations++;
-      conflictDetails.push(`Room Type Violation: Lecture ${entry.subject?.code} in lab ${entry.room.roomNumber}`);
+      conflictDetails.push(`Room Type Violation: Lecture ${entry.subject?.code || asgn?.subject?.code} in lab ${resolvedRoom.roomNumber}`);
     }
-    // Note: TUTORIAL in a lab is VALID at MMIT (requiredRoomType='ANY') — no violation flagged.
 
     // MMIT Check: Room Authorization for Practicals (must be in allowedLocations)
-    if (entry.type === 'PRACTICAL' && entry.facultyAssignmentId) {
-      const asgn = assignmentById.get(entry.facultyAssignmentId);
-      if (asgn && asgn.allowedLocations && asgn.allowedLocations.length > 0) {
-        const allowedRoomIds = new Set(
-          asgn.allowedLocations
-            .map((loc: any) => roomByNumber.get(loc.roomNumber.toUpperCase()))
-            .filter(Boolean)
-        );
-        if (!allowedRoomIds.has(entry.roomId)) {
-          violations.unauthorizedRoomForPractical++;
-          const room = roomById.get(entry.roomId);
-          conflictDetails.push(`MMIT Room Auth Violation: Practical ${entry.subject?.code} (assign ${entry.facultyAssignmentId}) placed in room ${room?.roomNumber || entry.roomId} which is NOT in allowedLocations.`);
-        }
+    if (entry.type === 'PRACTICAL' && asgn && asgn.allowedLocations && asgn.allowedLocations.length > 0) {
+      const allowedRoomIds = new Set(
+        asgn.allowedLocations
+          .map((loc: any) => roomByNumber.get(loc.roomNumber.toUpperCase()))
+          .filter(Boolean)
+      );
+      if (!allowedRoomIds.has(entry.roomId)) {
+        violations.unauthorizedRoomForPractical++;
+        conflictDetails.push(`MMIT Room Auth Violation: Practical ${entry.subject?.code || asgn.subject?.code} placed in room ${resolvedRoom?.roomNumber || entry.roomId} which is NOT in allowedLocations.`);
       }
     }
 
@@ -306,6 +307,23 @@ export async function validateTimetableZeroTrust(
       violations.theoryMismatch += (eList.length - 1);
       const e = eList[0];
       conflictDetails.push(`Daily Lecture Limit: Subject ${e.subject?.code || e.subjectId} has ${eList.length} theory lectures on ${DAY_NAMES[e.dayOfWeek]} for Division ${e.divisionId}`);
+    }
+  });
+
+  // ─── Daily Batch Practical Limit (Max 1 practical block per subject per batch per day) ───
+  const batchSubjDayBlocks = new Map<string, Set<number>>();
+  for (const entry of entriesToValidate) {
+    if (entry.batchId && (entry.type === 'PRACTICAL' || entry.type === 'TUTORIAL')) {
+      const k = `${entry.subjectId}-${entry.batchId}-${entry.dayOfWeek}`;
+      if (!batchSubjDayBlocks.has(k)) batchSubjDayBlocks.set(k, new Set());
+      const blockId = Math.floor((entry.slotIndex - 1) / 3);
+      batchSubjDayBlocks.get(k)!.add(blockId);
+    }
+  }
+  batchSubjDayBlocks.forEach((blocks, key) => {
+    if (blocks.size > 1) {
+      violations.duplicateSessions += (blocks.size - 1);
+      conflictDetails.push(`Daily Practical Limit: Subject for batch has ${blocks.size} separate practical blocks on the same day.`);
     }
   });
 

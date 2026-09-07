@@ -40,6 +40,38 @@
   --radius: 0.5rem;
 }
 
+.dark {
+  --background: #0b0f19;
+  --foreground: #f1f5f9;
+
+  --card: #131b2e;
+  --card-foreground: #f1f5f9;
+
+  --popover: #131b2e;
+  --popover-foreground: #f1f5f9;
+
+  --primary: #E31837;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #C8102E;
+
+  --secondary: #1e293b;
+  --secondary-foreground: #f8fafc;
+
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+
+  --accent: #3b1419;
+  --accent-foreground: #fca5a5;
+  --accent-border: #7f1d1d;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #FFFFFF;
+
+  --border: #1e293b;
+  --input: #1e293b;
+  --ring: #E31837;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -71,8 +103,246 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-[#F8F9FA] text-[#222222] antialiased font-sans;
+    @apply bg-[#F8F9FA] text-[#222222] antialiased font-sans transition-colors duration-200;
   }
+}
+
+/* ---------------------------------------------------- */
+/* Dark Mode Base and Component Overrides              */
+/* ---------------------------------------------------- */
+
+.dark body {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark header {
+  background-color: #131b2e !important;
+  border-color: #1e293b !important;
+}
+
+.dark aside {
+  background-color: #131b2e !important;
+  border-color: #1e293b !important;
+}
+
+.dark footer {
+  background-color: #131b2e !important;
+  border-color: #1e293b !important;
+  color: #94a3b8 !important;
+}
+
+.dark .mmit-card {
+  background-color: #131b2e !important;
+  border-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .mmit-card-header {
+  background-color: #0b0f19 !important;
+  border-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .mmit-table-container {
+  background-color: #131b2e !important;
+  border-color: #1e293b !important;
+}
+
+.dark .mmit-table {
+  color: #f1f5f9 !important;
+}
+
+.dark .mmit-table td {
+  border-color: #1e293b !important;
+  color: #cbd5e1 !important;
+}
+
+.dark .mmit-table tr:nth-child(even) td {
+  background-color: #0e1626 !important;
+}
+
+.dark .mmit-table tr:hover td {
+  background-color: #2a1620 !important;
+}
+
+.dark .mmit-badge-gray {
+  background-color: #1e293b !important;
+  color: #cbd5e1 !important;
+  border-color: #334155 !important;
+}
+
+.dark .mmit-badge-red {
+  background-color: rgba(200, 16, 46, 0.18) !important;
+  color: #f87171 !important;
+  border-color: rgba(200, 16, 46, 0.4) !important;
+}
+
+.dark .mmit-badge-blue {
+  background-color: rgba(37, 99, 235, 0.18) !important;
+  color: #60a5fa !important;
+  border-color: rgba(37, 99, 235, 0.4) !important;
+}
+
+.dark .mmit-badge-emerald {
+  background-color: rgba(16, 185, 129, 0.18) !important;
+  color: #34d399 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.dark .mmit-badge-amber {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+.dark .mmit-btn-secondary {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.dark .mmit-btn-secondary:hover {
+  background-color: #334155 !important;
+}
+
+.dark .mmit-btn-outline-red {
+  background-color: transparent !important;
+  color: #f87171 !important;
+  border-color: rgba(200, 16, 46, 0.5) !important;
+}
+
+.dark .mmit-btn-outline-red:hover {
+  background-color: rgba(200, 16, 46, 0.18) !important;
+}
+
+.dark .mmit-input {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+/* Comprehensive Dark Mode Structural Utility Classes */
+.dark .bg-white:not([class*="bg-[#C8102E]"]):not(.mmit-btn-primary):not([class*="bg-red-"]) {
+  background-color: #131b2e !important;
+}
+
+.dark .bg-\[\#F8F9FA\],
+.dark .bg-\[\#f8fafc\],
+.dark .bg-slate-50 {
+  background-color: #0b0f19 !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-slate-200 {
+  background-color: #334155 !important;
+}
+
+.dark .text-\[\#222222\],
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-\[\#666666\],
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .border-\[\#E5E7EB\],
+.dark .border-slate-200,
+.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
+
+.dark .hover\:bg-\[\#F8F9FA\]:hover,
+.dark .hover\:bg-slate-50:hover {
+  background-color: #1e293b !important;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: #334155 !important;
+}
+
+.dark .bg-\[\#FEF2F2\],
+.dark .bg-red-50 {
+  background-color: rgba(200, 16, 46, 0.15) !important;
+}
+
+.dark select,
+.dark input[type="text"],
+.dark input[type="search"],
+.dark input[type="number"],
+.dark input[type="password"] {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.dark option {
+  background-color: #131b2e !important;
+  color: #f1f5f9 !important;
+}
+
+/* Modals in Dark Mode */
+.dark [role="dialog"],
+.dark .fixed .bg-white {
+  background-color: #131b2e !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+/* ---------------------------------------------------- */
+/* Dark Mode Timetable Grid High-Contrast Visibility    */
+/* ---------------------------------------------------- */
+.dark #timetable-printable-area {
+  background-color: #131b2e !important;
+  color: #f1f5f9 !important;
+}
+
+.dark #timetable-printable-area table {
+  border-color: #475569 !important;
+}
+
+.dark #timetable-printable-area th,
+.dark #timetable-printable-area td {
+  border-color: #475569 !important;
+}
+
+.dark #timetable-printable-area th.bg-\[\#C8102E\] {
+  background-color: #C8102E !important;
+  color: #ffffff !important;
+}
+
+.dark #timetable-printable-area .bg-white {
+  background-color: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+
+.dark #timetable-printable-area .bg-slate-50,
+.dark #timetable-printable-area .bg-\[\#F8F9FA\] {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark #timetable-printable-area .text-\[\#222222\] {
+  color: #f1f5f9 !important;
+}
+
+.dark #timetable-printable-area .text-\[\#666666\] {
+  color: #94a3b8 !important;
+}
+
+.dark #timetable-printable-area .border-black {
+  border-color: #475569 !important;
+}
+
+.dark #timetable-printable-area svg line {
+  stroke: #94a3b8 !important;
 }
 
 /* Institutional Card Styling */
@@ -166,4 +436,65 @@
 /* Form input utility */
 .mmit-input {
   @apply w-full px-3 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-[#C8102E]/20 focus:border-[#C8102E] transition-all;
+}
+
+/* Institutional Clean Print Styles */
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #timetable-printable-area, #timetable-printable-area * {
+    visibility: visible;
+    background-color: transparent !important;
+  }
+
+  #timetable-printable-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  #timetable-printable-area th.bg-\[\#C8102E\] {
+    background-color: #C8102E !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #timetable-printable-area .border-black,
+  #timetable-printable-area table,
+  #timetable-printable-area th,
+  #timetable-printable-area td {
+    border-color: #000000 !important;
+  }
+
+  #timetable-printable-area svg line {
+    stroke: #000000 !important;
+  }
+
+  header, nav, aside, .print\:hidden, [data-sidebar], .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 8mm 8mm 8mm 8mm;
+  }
 }

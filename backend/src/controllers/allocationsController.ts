@@ -7,6 +7,40 @@ const prisma = new PrismaClient();
 const NORMAL_WORKLOAD_LIMIT = 18;
 const HIGH_WORKLOAD_LIMIT = 22;
 
+export function formatAllocation(a: any) {
+  let derivedClass = a.className;
+  const code = a.courseCode || a.subject?.code || '';
+
+  if (code.startsWith('PCC-50') || code.startsWith('PEC-52') || code.startsWith('RM-60')) {
+    derivedClass = 'ME-I';
+  } else if (code.startsWith('PCC-20') || code.startsWith('HSMC-20') || code.startsWith('EEM-24') || code.startsWith('CEF-26') || code.startsWith('VEC-25') || code.startsWith('OEL-22')) {
+    derivedClass = 'SE';
+  } else if (code.startsWith('PCC30') || code.startsWith('PEC32') || code.startsWith('MDM33') || code.startsWith('OLE34') || code.startsWith('ELC34')) {
+    derivedClass = 'TE';
+  } else if (code.startsWith('4102')) {
+    derivedClass = 'BE';
+  } else {
+    const yr = a.division?.year?.year;
+    if (yr === 2) derivedClass = 'SE';
+    else if (yr === 3) derivedClass = 'TE';
+    else if (yr === 4) derivedClass = 'BE';
+  }
+
+  const derivedDiv = a.divisionName || a.division?.name || 'A';
+  const derivedBatch = a.batchName || a.batch?.name || (a.batchId ? (a.batch?.name || 'A1') : 'All');
+  const courseCode = a.courseCode || a.subject?.code || '';
+  const courseName = a.courseName || a.subject?.name || '';
+
+  return {
+    ...a,
+    className: derivedClass || 'SE',
+    divisionName: derivedDiv,
+    batchName: derivedBatch,
+    courseCode,
+    courseName,
+  };
+}
+
 export const getAllocations = async (req: Request, res: Response) => {
   try {
     const { departmentId, academicYear, semester, className, divisionName, teacherId, search } = req.query;
@@ -58,7 +92,11 @@ export const getAllocations = async (req: Request, res: Response) => {
       include: {
         teacher: true,
         subject: true,
-        division: true,
+        division: {
+          include: {
+            year: true
+          }
+        },
         batch: true,
         department: true,
         allowedLocations: true
@@ -66,7 +104,7 @@ export const getAllocations = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json(allocations);
+    res.json(allocations.map(formatAllocation));
   } catch (error) {
     console.error('Error fetching allocations:', error);
     res.status(500).json({ message: 'Error fetching allocations', error });
@@ -287,7 +325,11 @@ export const getWorkloadSummary = async (req: Request, res: Response) => {
         assignments: {
           include: {
             subject: true,
-            division: true,
+            division: {
+              include: {
+                year: true
+              }
+            },
             batch: true,
             allowedLocations: true
           }
@@ -305,7 +347,9 @@ export const getWorkloadSummary = async (req: Request, res: Response) => {
         let tutorial = 0;
         let project = 0;
 
-        t.assignments.forEach(a => {
+        const formattedAllocations = t.assignments.map(formatAllocation);
+
+        formattedAllocations.forEach(a => {
           theory += a.theoryHours || (a.type === 'LECTURE' ? a.weeklyHours : 0);
           practical += a.practicalHours || (a.type === 'PRACTICAL' ? a.weeklyHours : 0);
           tutorial += a.tutorialHours || (a.type === 'TUTORIAL' ? a.weeklyHours : 0);
@@ -337,8 +381,8 @@ export const getWorkloadSummary = async (req: Request, res: Response) => {
           status,
           isCodeFlagged: t.isCodeFlagged,
           codeFlagReason: t.codeFlagReason,
-          allocationsCount: t.assignments.length,
-          allocations: t.assignments
+          allocationsCount: formattedAllocations.length,
+          allocations: formattedAllocations
         };
       })
       .filter(f => f.allocationsCount > 0 || (departmentId && departmentId !== 'ALL'))

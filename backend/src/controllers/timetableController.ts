@@ -8,15 +8,27 @@ const prisma = new PrismaClient();
 export const generateTimetable = async (req: Request, res: Response) => {
   try {
     const {
-      days = [1, 2, 3, 4, 5, 6],
+      days = [1, 2, 3, 4, 5],
       departmentId,
       divisionIds,
       semesterFilter,
       mode = 'BEST_EFFORT'
     } = req.body;
 
+    let targetDivs;
+    if (divisionIds && Array.isArray(divisionIds) && divisionIds.length > 0) {
+      targetDivs = await prisma.division.findMany({ 
+        where: { id: { in: divisionIds } } 
+      });
+    } else {
+      targetDivs = await prisma.division.findMany({ 
+        where: { year: { year: { in: [2, 3, 4] } }, name: { in: ['A', 'B'] } } 
+      });
+    }
+    const targetDivisionIds = targetDivs.map((d: any) => d.id);
+
     const engine = new TimetableEngine();
-    const result = await engine.generate({ days, departmentId, divisionIds, semesterFilter, mode });
+    const result = await engine.generate({ days, departmentId, divisionIds: targetDivisionIds, semesterFilter, mode });
 
     if (!result.isValid || result.status !== 'VALID') {
       return res.status(422).json({
@@ -55,10 +67,13 @@ export const getTimetablePreview = async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.query;
     const engine = new TimetableEngine();
-    const preview = await engine.getPreview({ departmentId: departmentId as string });
-    res.json(preview);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching generation preview', error });
+    const preview = await engine.getPreview({ 
+      departmentId: (departmentId && departmentId !== 'ALL') ? String(departmentId) : undefined 
+    });
+    return res.json(preview);
+  } catch (error: any) {
+    console.error('[Preview] Error:', error);
+    return res.status(500).json({ message: 'Error fetching generation preview', error: error?.message || String(error) });
   }
 };
 
@@ -87,10 +102,47 @@ export const validateTimetableRoute = async (req: Request, res: Response) => {
   }
 };
 
+async function resolveTimetableIdForVariant(timetableId: string, variant: number): Promise<string> {
+  if (variant <= 1) return timetableId;
+
+  const baseTimetable = await prisma.timetable.findUnique({ where: { id: timetableId } });
+  if (!baseTimetable) return timetableId;
+
+  // Look for sibling variant timetable created around the same time (within 15 minutes)
+  const timeThresholdAfter = new Date(baseTimetable.createdAt.getTime() + 15 * 60 * 1000);
+  const timeThresholdBefore = new Date(baseTimetable.createdAt.getTime() - 15 * 60 * 1000);
+
+  const variantTimetable = await prisma.timetable.findFirst({
+    where: {
+      name: { contains: `Variant ${variant}` },
+      createdAt: { gte: timeThresholdBefore, lte: timeThresholdAfter },
+      isValid: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (variantTimetable) return variantTimetable.id;
+
+  // Fallback: If no exact variant name match, find other valid timetables
+  const allTimetables = await prisma.timetable.findMany({
+    where: { isValid: true },
+    orderBy: { createdAt: 'desc' },
+    take: 6,
+  });
+
+  if (allTimetables.length >= variant) {
+    return allTimetables[variant - 1].id;
+  }
+
+  return timetableId;
+}
+
 export const getTimetableCompleteness = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await validateTimetableCompleteness(String(id));
+    const variant = parseInt(req.query.variant as string) || 1;
+    const targetId = await resolveTimetableIdForVariant(String(id), variant);
+    const result = await validateTimetableCompleteness(targetId);
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: 'Error fetching completeness', error: error?.message });
@@ -100,30 +152,41 @@ export const getTimetableCompleteness = async (req: Request, res: Response) => {
 export const getAllEntries = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const variant = parseInt(req.query.variant as string) || 1;
+    const targetId = await resolveTimetableIdForVariant(String(id), variant);
     const entries = await prisma.timetableEntry.findMany({
-      where: { timetableId: String(id) },
+      where: { timetableId: targetId },
       include: {
         subject: true,
         teacher: true,
         room: true,
-        division: true,
+        division: { include: { year: { include: { course: true } } } },
         batch: true,
       },
       orderBy: [{ dayOfWeek: 'asc' }, { slotIndex: 'asc' }]
     });
 
     // Normalize response to always include subjectName and subjectCode
-    const normalized = entries.map(e => ({
-      ...e,
-      subjectName: e.subject?.name || '',
-      subjectCode: e.subject?.code || '',
-      teacherName: e.teacher?.name || '',
-      teacherCode: e.teacher?.shortCode || e.teacher?.employeeId || '',
-      roomNumber: e.room?.roomNumber || '',
-      divisionName: e.division?.name || '',
-      batchName: e.batch?.name || '',
-      isLab: e.room?.isLab || false,
-    }));
+    const normalized = entries.map(e => {
+      let className = e.division?.name || '';
+      if (e.division?.year) {
+        const y = e.division.year.year;
+        const prefix = y === 2 ? 'SE' : (y === 3 ? 'TE' : (y === 4 ? 'BE' : (e.division.year.course?.name?.includes('M.E.') ? 'ME' : `FE`)));
+        className = `${prefix}-${e.division.name}`;
+      }
+      return {
+        ...e,
+        subjectName: e.subject?.name || '',
+        subjectCode: e.subject?.code || '',
+        teacherName: e.teacher?.name || '',
+        teacherCode: e.teacher?.shortCode || e.teacher?.employeeId?.replace('EMP-', '') || 'FAC',
+        roomNumber: e.room?.roomNumber || '',
+        divisionName: e.division?.name || '',
+        className,
+        batchName: e.batch?.name || '',
+        isLab: e.room?.isLab || false,
+      };
+    });
     res.json(normalized);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching entries', error });
@@ -133,11 +196,13 @@ export const getAllEntries = async (req: Request, res: Response) => {
 export const getTeacherTimetable = async (req: Request, res: Response) => {
   try {
     const { id, teacherId } = req.params;
+    const variant = parseInt(req.query.variant as string) || 1;
+    const targetId = await resolveTimetableIdForVariant(String(id), variant);
 
     const [entries, teacher, assignments] = await Promise.all([
       prisma.timetableEntry.findMany({
-        where: { timetableId: String(id), teacherId: String(teacherId) },
-        include: { subject: true, room: true, division: true, batch: true },
+        where: { timetableId: targetId, teacherId: String(teacherId) },
+        include: { subject: true, teacher: true, room: true, division: { include: { year: { include: { course: true } } } }, batch: true },
         orderBy: [{ dayOfWeek: 'asc' }, { slotIndex: 'asc' }]
       }),
       prisma.teacher.findUnique({ where: { id: String(teacherId) } }),
@@ -151,14 +216,25 @@ export const getTeacherTimetable = async (req: Request, res: Response) => {
     const projectHours = assignments.reduce((s, a) => s + a.projectHours, 0);
     const academicHours = entries.reduce((s, e) => s + (e.type === 'PRACTICAL' ? 2 : 1), 0);
 
-    const normalized = entries.map(e => ({
-      ...e,
-      subjectName: e.subject?.name || '',
-      subjectCode: e.subject?.code || '',
-      roomNumber: e.room?.roomNumber || '',
-      divisionName: e.division?.name || '',
-      batchName: e.batch?.name || '',
-    }));
+    const normalized = entries.map(e => {
+      let className = e.division?.name || '';
+      if (e.division?.year) {
+        const y = e.division.year.year;
+        const prefix = y === 2 ? 'SE' : (y === 3 ? 'TE' : (y === 4 ? 'BE' : (e.division.year.course?.name?.includes('M.E.') ? 'ME' : `FE`)));
+        className = `${prefix}-${e.division.name}`;
+      }
+      return {
+        ...e,
+        subjectName: e.subject?.name || '',
+        subjectCode: e.subject?.code || '',
+        teacherName: e.teacher?.name || teacher?.name || '',
+        teacherCode: e.teacher?.shortCode || teacher?.shortCode || e.teacher?.employeeId?.replace('EMP-', '') || teacher?.employeeId?.replace('EMP-', '') || 'FAC',
+        roomNumber: e.room?.roomNumber || '',
+        divisionName: e.division?.name || '',
+        className,
+        batchName: e.batch?.name || '',
+      };
+    });
 
     res.json({
       teacher,
@@ -180,21 +256,34 @@ export const getTeacherTimetable = async (req: Request, res: Response) => {
 export const getDivisionTimetable = async (req: Request, res: Response) => {
   try {
     const { id, divisionId } = req.params;
+    const variant = parseInt(req.query.variant as string) || 1;
+    const targetId = await resolveTimetableIdForVariant(String(id), variant);
+
     const entries = await prisma.timetableEntry.findMany({
-      where: { timetableId: String(id), divisionId: String(divisionId) },
-      include: { subject: true, teacher: true, room: true, batch: true },
+      where: { timetableId: targetId, divisionId: String(divisionId) },
+      include: { subject: true, teacher: true, room: true, division: { include: { year: { include: { course: true } } } }, batch: true },
       orderBy: [{ dayOfWeek: 'asc' }, { slotIndex: 'asc' }]
     });
 
-    const normalized = entries.map(e => ({
-      ...e,
-      subjectName: e.subject?.name || '',
-      subjectCode: e.subject?.code || '',
-      teacherName: e.teacher?.name || '',
-      teacherCode: e.teacher?.shortCode || e.teacher?.employeeId || '',
-      roomNumber: e.room?.roomNumber || '',
-      batchName: e.batch?.name || '',
-    }));
+    const normalized = entries.map(e => {
+      let className = e.division?.name || '';
+      if (e.division?.year) {
+        const y = e.division.year.year;
+        const prefix = y === 2 ? 'SE' : (y === 3 ? 'TE' : (y === 4 ? 'BE' : (e.division.year.course?.name?.includes('M.E.') ? 'ME' : `FE`)));
+        className = `${prefix}-${e.division.name}`;
+      }
+      return {
+        ...e,
+        subjectName: e.subject?.name || '',
+        subjectCode: e.subject?.code || '',
+        teacherName: e.teacher?.name || '',
+        teacherCode: e.teacher?.shortCode || e.teacher?.employeeId?.replace('EMP-', '') || 'FAC',
+        roomNumber: e.room?.roomNumber || '',
+        divisionName: e.division?.name || '',
+        className,
+        batchName: e.batch?.name || '',
+      };
+    });
     res.json(normalized);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching division timetable', error });
@@ -248,19 +337,45 @@ export const deleteTimetable = async (req: Request, res: Response) => {
 export const getRoomTimetable = async (req: Request, res: Response) => {
   try {
     const { id, roomId } = req.params;
-    const entries = await prisma.timetableEntry.findMany({
-      where: { timetableId: String(id), roomId: String(roomId) },
-      include: { subject: true, teacher: true, division: true, batch: true, room: true },
-      orderBy: [{ dayOfWeek: 'asc' }, { slotIndex: 'asc' }]
+    const variant = parseInt(req.query.variant as string) || 1;
+    const targetId = await resolveTimetableIdForVariant(String(id), variant);
+
+    const [entries, room] = await Promise.all([
+      prisma.timetableEntry.findMany({
+        where: { timetableId: targetId, roomId: String(roomId) },
+        include: {
+          subject: true,
+          teacher: true,
+          division: { include: { year: { include: { course: true } } } },
+          batch: true,
+          room: true,
+        },
+        orderBy: [{ dayOfWeek: 'asc' }, { slotIndex: 'asc' }]
+      }),
+      prisma.room.findUnique({ where: { id: String(roomId) } })
+    ]);
+
+    const normalized = entries.map(e => {
+      let className = e.division?.name || '';
+      if (e.division?.year) {
+        const y = e.division.year.year;
+        const prefix = y === 2 ? 'SE' : (y === 3 ? 'TE' : (y === 4 ? 'BE' : (e.division.year.course?.name?.includes('M.E.') ? 'ME' : `FE`)));
+        className = `${prefix}-${e.division.name}`;
+      }
+      return {
+        ...e,
+        subjectName: e.subject?.name || '',
+        subjectCode: e.subject?.code || '',
+        teacherName: e.teacher?.name || '',
+        teacherCode: e.teacher?.shortCode || e.teacher?.employeeId?.replace('EMP-', '') || 'FAC',
+        roomNumber: e.room?.roomNumber || room?.roomNumber || '',
+        divisionName: e.division?.name || '',
+        className,
+        batchName: e.batch?.name || '',
+        isLab: e.room?.isLab || room?.isLab || false,
+      };
     });
-    const normalized = entries.map(e => ({
-      ...e,
-      subjectName: e.subject?.name || '',
-      subjectCode: e.subject?.code || '',
-      teacherName: e.teacher?.name || '',
-      divisionName: e.division?.name || '',
-      batchName: e.batch?.name || '',
-    }));
+
     res.json(normalized);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching room timetable', error });

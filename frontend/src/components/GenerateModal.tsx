@@ -1,6 +1,5 @@
-"use client";
-
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { apiUrl } from "@/lib/api";
 import {
   X, Loader2, CheckCircle2, AlertTriangle, XCircle,
@@ -52,6 +51,7 @@ const GEN_STEPS = [
 ];
 
 export function GenerateModal({ isOpen, onClose, onGenerated }: GenerateModalProps) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>("preview");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -121,6 +121,16 @@ export function GenerateModal({ isOpen, onClose, onGenerated }: GenerateModalPro
     setError(null);
     setGenStepIdx(0);
     onClose();
+  };
+
+  const handleViewTimetable = () => {
+    const timetableId = result?.timetable?.id;
+    handleClose();
+    if (timetableId) {
+      router.push(`/timetables/${timetableId}`);
+    } else {
+      router.push('/timetables');
+    }
   };
 
   if (!isOpen) return null;
@@ -375,7 +385,7 @@ export function GenerateModal({ isOpen, onClose, onGenerated }: GenerateModalPro
                   )}
 
                   <div className="flex gap-2">
-                    <button onClick={handleClose} className="flex-1 mmit-btn-primary justify-center cursor-pointer">
+                    <button onClick={handleViewTimetable} className="flex-1 mmit-btn-primary justify-center cursor-pointer">
                       View Timetable
                     </button>
                     <button

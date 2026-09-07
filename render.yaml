@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mmit-timetable-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 5050
+      - key: DATABASE_URL
+        value: file:./dev.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production

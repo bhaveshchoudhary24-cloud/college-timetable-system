@@ -133,3 +133,87 @@ export const register = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
+
+export const changePassword = async (req: Request, res: Response) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword, email } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required.' });
+    }
+
+    if (confirmPassword && newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'New password and confirm password do not match.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters long.' });
+    }
+
+    // Identify user from auth token header or email/admin default
+    let targetUser: any = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded && decoded.id) {
+          targetUser = await prisma.user.findUnique({ where: { id: decoded.id } });
+        }
+      } catch (e) {
+        // Token might be demo token or expired, fallback to lookup
+      }
+    }
+
+    if (!targetUser) {
+      const identifier = email ? String(email).trim().toLowerCase() : 'admin';
+      targetUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: identifier },
+            { email: `${identifier}@mmit.edu.in` },
+            { name: identifier }
+          ]
+        }
+      });
+    }
+
+    if (!targetUser) {
+      return res.status(404).json({ message: 'Administrator account not found.' });
+    }
+
+    // Verify current password against passwordHash
+    const isMatch = await bcrypt.compare(currentPassword, targetUser.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Incorrect current password. Please check and try again.' });
+    }
+
+    // Hash the new password
+    const salt = await bcrypt.genSalt(10);
+    const newHash = await bcrypt.hash(newPassword, salt);
+
+    // Update target user (and sync companion admin accounts if both exist)
+    await prisma.user.update({
+      where: { id: targetUser.id },
+      data: { passwordHash: newHash }
+    });
+
+    if (targetUser.email === 'admin' || targetUser.email === 'admin@mmit.edu.in') {
+      await prisma.user.updateMany({
+        where: {
+          email: { in: ['admin', 'admin@mmit.edu.in'] }
+        },
+        data: { passwordHash: newHash }
+      });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Password updated successfully. Please use your new password on your next login.' 
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    return res.status(500).json({ message: 'Server error while updating password.' });
+  }
+};
+
