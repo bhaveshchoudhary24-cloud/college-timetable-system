@@ -201,7 +201,7 @@ const MASTER_DATA: MasterRecord[] = [
     className: 'SE',
     divisionName: 'A&B',
     batchName: 'A1,A2,B1,B2',
-    location: 'C102/C107/E101',
+    location: 'C102/C111/E101',
     courseCode: 'EEM-240-COM',
     courseName: 'Entrepreneurship Development',
     theory: 0, practical: 8, tutorial: 4, project: 0, total: 12,
@@ -210,7 +210,7 @@ const MASTER_DATA: MasterRecord[] = [
       { batch: 'A1', roomNumber: 'E101', isPreferred: false },
       { batch: 'A2', roomNumber: 'C102', isPreferred: true },
       { batch: 'A2', roomNumber: 'E101', isPreferred: false },
-      { batch: 'B1', roomNumber: 'C107', isPreferred: true },
+      { batch: 'B1', roomNumber: 'C111', isPreferred: true },
       { batch: 'B1', roomNumber: 'E101', isPreferred: false },
       { batch: 'B2', roomNumber: 'C102', isPreferred: true },
       { batch: 'B2', roomNumber: 'E101', isPreferred: false }
@@ -627,18 +627,18 @@ const MASTER_DATA: MasterRecord[] = [
     className: 'SE',
     divisionName: 'A&B',
     batchName: 'A3,A4,B3,B4',
-    location: 'C107/C102',
+    location: 'C111/C102',
     courseCode: 'EEM-240-COM',
     courseName: 'Entrepreneurship Development',
     theory: 0, practical: 8, tutorial: 4, project: 0, total: 12,
     allowedLocationsList: [
-      { batch: 'A3', roomNumber: 'C107', isPreferred: true },
+      { batch: 'A3', roomNumber: 'C111', isPreferred: true },
       { batch: 'A3', roomNumber: 'E101', isPreferred: false },
-      { batch: 'A4', roomNumber: 'C107', isPreferred: true },
+      { batch: 'A4', roomNumber: 'C111', isPreferred: true },
       { batch: 'A4', roomNumber: 'E101', isPreferred: false },
-      { batch: 'B3', roomNumber: 'C107', isPreferred: true },
+      { batch: 'B3', roomNumber: 'C111', isPreferred: true },
       { batch: 'B3', roomNumber: 'E101', isPreferred: false },
-      { batch: 'B4', roomNumber: 'C107', isPreferred: true },
+      { batch: 'B4', roomNumber: 'C111', isPreferred: true },
       { batch: 'B4', roomNumber: 'E101', isPreferred: false }
     ]
   },
@@ -724,7 +724,7 @@ const MASTER_DATA: MasterRecord[] = [
     theory: 0, practical: 0, tutorial: 4, project: 0, total: 4,
     allowedLocationsList: [
       { batch: 'A2', roomNumber: 'C105', isPreferred: true },
-      { batch: 'B2', roomNumber: 'E105', isPreferred: true }
+      { batch: 'B2', roomNumber: 'C102', isPreferred: true }
     ]
   },
 
@@ -942,11 +942,11 @@ const MASTER_DATA: MasterRecord[] = [
     className: 'TE',
     divisionName: 'B',
     batchName: 'B4',
-    location: 'E105',
+    location: 'C101',
     courseCode: 'ELC342COM',
     courseName: 'Technical Seminar',
     theory: 0, practical: 0, tutorial: 2, project: 0, total: 2,
-    allowedLocationsList: [{ batch: 'B4', roomNumber: 'E101', isPreferred: true }]
+    allowedLocationsList: [{ batch: 'B4', roomNumber: 'C101', isPreferred: true }]
   },
 
   // 18. Prof. Nutan Sarode
@@ -1218,21 +1218,18 @@ export async function seedFacultyWorkload() {
     console.log('[Seed] Created Computer Engineering department (COMP)');
   }
 
-  // Create standard rooms if missing
+  // Create standard rooms if missing (Exactly 4 Classrooms and 9 Laboratories)
   const roomsToEnsure = [
     { number: 'E101', isLab: false, name: 'SE-A Classroom' },
     { number: 'E102', isLab: false, name: 'TE-A Classroom' },
     { number: 'E103', isLab: false, name: 'TE-B Classroom' },
     { number: 'E104', isLab: false, name: 'SE-B Classroom' },
-    { number: 'E105', isLab: false, name: 'Classroom E105' },
-    { number: 'E106', isLab: false, name: 'Classroom E106' },
     { number: 'C101', isLab: true, name: 'DBMS Lab' },
     { number: 'C102', isLab: true, name: 'Software Testing Lab' },
     { number: 'C103', isLab: true, name: 'Hardware Lab' },
     { number: 'C104', isLab: true, name: 'OOPCG Lab' },
     { number: 'C105', isLab: true, name: 'Digital / Microprocessor Lab' },
     { number: 'C106', isLab: true, name: 'Programming Lab' },
-    { number: 'C107', isLab: true, name: 'Lab C107' },
     { number: 'C108', isLab: true, name: 'Server Room' },
     { number: 'C110', isLab: true, name: 'Data Structure Lab' },
     { number: 'C111', isLab: true, name: 'Signal Processing Lab' }

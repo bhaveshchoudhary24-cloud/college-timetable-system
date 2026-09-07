@@ -319,9 +319,9 @@ async function main() {
     }
   }
 
-  // Add Rooms
-  const roomsList = ['E101', 'E102', 'E103', 'E104', 'E105', 'E106'];
-  const labsList = ['C101', 'C102', 'C103', 'C104', 'C105', 'C106', 'C107', 'C108', 'C110', 'C111'];
+  // Add Rooms (Exactly 4 Classrooms and 9 Laboratories)
+  const roomsList = ['E101', 'E102', 'E103', 'E104'];
+  const labsList = ['C101', 'C102', 'C103', 'C104', 'C105', 'C106', 'C108', 'C110', 'C111'];
 
   for (const r of roomsList) {
     await prisma.room.create({ data: { roomNumber: r, capacity: 60, isLab: false, departmentId: ceDept.id } });

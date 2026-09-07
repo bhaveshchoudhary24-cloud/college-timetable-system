@@ -31,24 +31,21 @@ async function checkAndSeed() {
       console.log(`[Startup] Database ready: ${teacherCount} teachers, ${assignmentCount} faculty assignments found.`);
     }
 
-    // Ensure all 16 canonical rooms are created and active
+    // Ensure strictly the 4 canonical classrooms and 9 laboratories
     const requiredRooms = [
-      { number: 'E101', isLab: false },
-      { number: 'E102', isLab: false },
-      { number: 'E103', isLab: false },
-      { number: 'E104', isLab: false },
-      { number: 'E105', isLab: false },
-      { number: 'E106', isLab: false },
-      { number: 'C101', isLab: true },
-      { number: 'C102', isLab: true },
-      { number: 'C103', isLab: true },
-      { number: 'C104', isLab: true },
-      { number: 'C105', isLab: true },
-      { number: 'C106', isLab: true },
-      { number: 'C107', isLab: true },
-      { number: 'C108', isLab: true },
-      { number: 'C110', isLab: true },
-      { number: 'C111', isLab: true }
+      { number: 'E101', isLab: false, name: 'SE-A Classroom' },
+      { number: 'E102', isLab: false, name: 'TE-A Classroom' },
+      { number: 'E103', isLab: false, name: 'TE-B Classroom' },
+      { number: 'E104', isLab: false, name: 'SE-B Classroom' },
+      { number: 'C101', isLab: true,  name: 'DBMS Lab' },
+      { number: 'C102', isLab: true,  name: 'Software Testing Lab' },
+      { number: 'C103', isLab: true,  name: 'Hardware Lab' },
+      { number: 'C104', isLab: true,  name: 'OOPCG Lab' },
+      { number: 'C105', isLab: true,  name: 'Digital / Microprocessor Lab' },
+      { number: 'C106', isLab: true,  name: 'Programming Lab' },
+      { number: 'C108', isLab: true,  name: 'Server Room' },
+      { number: 'C110', isLab: true,  name: 'Data Structure Lab' },
+      { number: 'C111', isLab: true,  name: 'Signal Processing Lab' }
     ];
 
     const dept = await prisma.department.findFirst();
@@ -70,6 +67,31 @@ async function checkAndSeed() {
           }
         });
       }
+
+      // Reassign any assignments referencing non-classroom/phantom rooms
+      await prisma.assignmentAllowedLocation.updateMany({
+        where: { roomNumber: 'C107' },
+        data: { roomNumber: 'C111', roomName: 'Signal Processing Lab' }
+      });
+      await prisma.assignmentAllowedLocation.updateMany({
+        where: { roomNumber: 'E105' },
+        data: { roomNumber: 'C105', roomName: 'Digital / Microprocessor Lab' }
+      });
+      await prisma.assignmentAllowedLocation.updateMany({
+        where: { roomNumber: 'E106' },
+        data: { roomNumber: 'C106', roomName: 'Programming Lab' }
+      });
+
+      // Remove phantom rooms (C107 is HOD Cabin, E105 & E106 do not exist)
+      await prisma.roomAvailability.deleteMany({
+        where: { room: { roomNumber: { in: ['C107', 'E105', 'E106'] } } }
+      });
+      await prisma.roomMapping.deleteMany({
+        where: { room: { roomNumber: { in: ['C107', 'E105', 'E106'] } } }
+      });
+      await prisma.room.deleteMany({
+        where: { roomNumber: { in: ['C107', 'E105', 'E106'] } }
+      });
     }
 
     // Ensure TE-B RoA allowed locations use E103 (never locked to E102)
