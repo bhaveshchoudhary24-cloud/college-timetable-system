@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { apiUrl } from '@/lib/api';
 
 import { exportTimetableToPDF } from '@/utils/generateTimetablePDF';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function TimetableViewer() {
   const params = useParams();
@@ -16,6 +17,7 @@ export default function TimetableViewer() {
   const [selectedId, setSelectedId] = useState<string>('');
   const [selectedVariant, setSelectedVariant] = useState<number>(1);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [isQrOpen, setIsQrOpen] = useState(false);
 
   const [teachers, setTeachers] = useState<any[]>([]);
   const [divisions, setDivisions] = useState<any[]>([]);
@@ -231,6 +233,12 @@ export default function TimetableViewer() {
               className="px-3 py-1.5 rounded-md text-xs font-bold border border-[#E5E7EB] dark:border-slate-700 hover:bg-[#F8F9FA] dark:hover:bg-slate-800 text-[#222222] dark:text-slate-200 flex items-center gap-1.5 cursor-pointer"
             >
               <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Conflict Diagnostics
+            </button>
+            <button
+              onClick={() => setIsQrOpen(true)}
+              className="px-3 py-1.5 rounded-md text-xs font-bold border border-[#E5E7EB] dark:border-slate-700 hover:bg-[#F8F9FA] dark:hover:bg-slate-800 text-[#222222] dark:text-slate-200 flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="text-base leading-none">📱</span> QR Notice
             </button>
             <button
               onClick={() => exportTimetableToPDF(
@@ -862,6 +870,85 @@ export default function TimetableViewer() {
                 <div className="h-10"></div>
                 <div className="border-t border-black dark:border-slate-400 pt-1 font-bold">Principal</div>
                 <div className="text-xs font-normal text-[#666666] dark:text-slate-400">MMIT Lohgaon, Pune</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── QR Notice Modal ── */}
+        {isQrOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 print:hidden"
+            onClick={() => setIsQrOpen(false)}
+          >
+            <div
+              className="bg-white dark:bg-[#131b2e] rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h2 className="text-lg font-extrabold text-[#222222] dark:text-slate-100">📱 QR Notice Board</h2>
+                  <p className="text-xs text-[#666666] dark:text-slate-400 mt-0.5">
+                    Print the master poster or individual classroom door stickers
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsQrOpen(false)}
+                  className="rounded-full p-2 hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500 text-lg font-bold"
+                >✕</button>
+              </div>
+
+              {/* Master QR */}
+              <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/40 dark:border-blue-800 p-5 text-center">
+                <p className="text-xs font-semibold uppercase tracking-widest text-blue-700 dark:text-blue-300 mb-3">
+                  🗓 Master Notice Board QR Code
+                </p>
+                <div className="inline-block rounded-lg border-4 border-blue-600 p-2 bg-white shadow-md">
+                  <QRCodeSVG
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/view/${timetableId}`}
+                    size={180}
+                    fgColor="#1d4ed8"
+                    bgColor="#ffffff"
+                  />
+                </div>
+                <p className="mt-3 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                  Scan → Select your class → View schedule
+                </p>
+                <p className="mt-1 text-[10px] text-blue-500 break-all">
+                  {typeof window !== 'undefined' ? window.location.origin : ''}/view/{timetableId}
+                </p>
+              </div>
+
+              {/* Per-division QRs */}
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">
+                🚪 Classroom Door Stickers (per Division)
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {divisions.map((div: any) => {
+                  const yearNum = div.year?.year ?? 0;
+                  const classLabel = yearNum === 2 ? 'SE' : yearNum === 3 ? 'TE' : yearNum === 4 ? 'BE' : 'UG';
+                  const displayName = `${classLabel} – Div ${div.name}`;
+                  const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/view/${timetableId}?division=${div.id}`;
+                  return (
+                    <div
+                      key={div.id}
+                      className="flex flex-col items-center rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 text-center shadow-sm"
+                    >
+                      <p className="mb-2 text-xs font-bold text-gray-700 dark:text-slate-200">{displayName}</p>
+                      <div className="rounded border-2 border-gray-700 p-1 bg-white">
+                        <QRCodeSVG value={url} size={110} fgColor="#1e293b" bgColor="#ffffff" />
+                      </div>
+                      <p className="mt-2 text-[9px] text-gray-400 break-all leading-tight">/view/...?div={div.id.slice(0,8)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* How to print tip */}
+              <div className="mt-5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+                <strong>💡 How to use:</strong> Right-click → Print this page, or take a screenshot and print at your college printer.
+                Door stickers work best at 3×3 inches. The master QR works on any large poster format.
               </div>
             </div>
           </div>

@@ -222,10 +222,14 @@ def solve_with_ortools(input_data):
             model.AddAtMostOne(vars_list)
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 8.0   # Fast fail; greedy fallback handles remainder
     import os
     cpu_count = os.cpu_count() or 1
-    solver.parameters.num_search_workers = min(2, cpu_count)
+    # Give CP-SAT enough time to find a solution:
+    # - On fast local CPUs it typically solves in <10s.
+    # - On Render free tier (0.1 vCPU) the solver needs up to 60s.
+    # Production validation is skipped (commit b8d07ed), so total pipeline stays < 90s.
+    solver.parameters.max_time_in_seconds = 60.0
+    solver.parameters.num_search_workers = min(cpu_count, 4)  # use up to 4 workers
     seed_val = int(input_data.get('randomSeed', 0))
     if seed_val == 0:
         v_num = int(input_data.get('variant', 1))

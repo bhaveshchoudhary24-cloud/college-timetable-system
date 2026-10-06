@@ -14,6 +14,7 @@ import divisionRoutes from './routes/divisionRoutes';
 import allocationsRoutes from './routes/allocationsRoutes';
 import masterSubjectRoutes from './routes/masterSubjectRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import publicRoutes from './routes/publicRoutes';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ app.use('/api/divisions', divisionRoutes);
 app.use('/api/allocations', allocationsRoutes);
 app.use('/api/master-subjects', masterSubjectRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/public', publicRoutes);
 
 // Setup generic error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

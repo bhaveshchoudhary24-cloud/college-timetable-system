@@ -18,17 +18,17 @@ async function checkAndSeed() {
     const assignmentCount = await prisma.facultyAssignment.count();
     const teacherCount = await prisma.teacher.count();
 
-    if (assignmentCount === 0 || teacherCount === 0) {
-      console.log(`[Startup] Empty database detected (Teachers: ${teacherCount}, Assignments: ${assignmentCount}).`);
-      console.log('[Startup] Seeding base structural data (departments, rooms, divisions)...');
+    if (teacherCount === 0) {
+      console.log(`[Startup] Empty database detected. Seeding base structural data (departments, rooms, divisions, teachers)...`);
       execSync('npx tsx prisma/seed.ts', { stdio: 'inherit' });
+    }
 
-      console.log('[Startup] Seeding full faculty workload assignments (168+ allocations)...');
-      execSync('npx tsx src/seed-faculty-workload.ts', { stdio: 'inherit' });
-
-      console.log('[Startup] Database initialization and auto-seed complete!');
+    if (assignmentCount < 168) {
+      console.log(`[Startup] Incomplete / legacy allocations detected (${assignmentCount} < 168). Seeding full canonical 168 faculty allocations...`);
+      execSync('npx tsx src/seed-canonical-168.ts', { stdio: 'inherit' });
+      console.log('[Startup] Canonical 168 faculty allocations initialization complete! ✅');
     } else {
-      console.log(`[Startup] Database ready: ${teacherCount} teachers, ${assignmentCount} faculty assignments found.`);
+      console.log(`[Startup] Database ready: ${teacherCount} teachers, ${assignmentCount} canonical faculty assignments found.`);
     }
 
     // Ensure strictly the 4 canonical classrooms and 9 laboratories

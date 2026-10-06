@@ -150,3 +150,16 @@ export const getSystemStats = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Error fetching system stats', error });
   }
 };
+
+export const reseedCanonical168Controller = async (req: Request, res: Response) => {
+  try {
+    const { seedCanonical168 } = await import('../seed-canonical-168');
+    await seedCanonical168();
+    const count = await prisma.facultyAssignment.count();
+    res.json({ success: true, message: `Successfully seeded ${count} canonical allocations!`, count });
+  } catch (error: any) {
+    console.error('Error reseeding canonical 168 allocations:', error);
+    res.status(500).json({ success: false, message: 'Reseed failed', error: error?.message || String(error) });
+  }
+};
+

@@ -24,11 +24,13 @@ frontend/dist/
 
 # Database
 *.db
+*.db*
+dev.db*
 *.db-journal
 *.db-shm
 *.db-wal
-*.backup
-*.friend-backup
+*.backup*
+*.friend-backup*
 
 # Python cache & venv
 __pycache__/

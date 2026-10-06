@@ -243,7 +243,7 @@ export class TimetableEngine {
           isValid: true,
           timetable: primaryTimetable,
           timetableId: primaryTimetable.id,
-          validationReport: null,
+          validationReport: undefined,
           diagnostics: [],
           message: `✅ Timetable generated successfully (production mode). Timetable ID: ${primaryTimetable.id}`,
         };
